@@ -227,3 +227,17 @@ managing the flow of a CLI application.
 - **[Getting started with Effect CLI modules](./ai-docs/src/70_cli/10_basics.ts)**:
   Build a command-line app with typed arguments and flags, then wire subcommand
   handlers into a single executable command.
+
+# AI provider interoperability
+
+These examples focus on type-level interoperability when multiple AI providers
+are imported in the same compilation unit.
+
+- **[Import multiple AI providers in one module](./ai-docs/src/71_ai/10_provider-interoperability.ts)**:
+  This fixture ensures OpenAI and Anthropic providers can coexist in one
+  compilation unit.
+  
+  Before the metadata augmentation fix, this failed with TS2717 due to
+  conflicting declarations of `RateLimitError.metadata` in:
+  - `packages/ai/openai/src/OpenAiError.ts`
+  - `packages/ai/anthropic/src/AnthropicError.ts`
