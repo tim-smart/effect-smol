@@ -227,3 +227,18 @@ managing the flow of a CLI application.
 - **[Getting started with Effect CLI modules](./ai-docs/src/70_cli/10_basics.ts)**:
   Build a command-line app with typed arguments and flags, then wire subcommand
   handlers into a single executable command.
+
+## Durable workflows
+
+Durable workflows coordinate multi-step business processes with persisted state
+and resumable execution. Define each step as an `Activity`, compose the steps in
+a `Workflow`, and execute or poll by deterministic execution ID.
+
+Running workflow code requires a `WorkflowEngine` service in context. For local
+development, provide `WorkflowEngine.layer`; for distributed deployments,
+provide `ClusterWorkflowEngine.layer` with its sharding and storage
+dependencies.
+
+- **[Defining durable workflows](./ai-docs/src/81_workflow/10_workflows.ts)**:
+  Build a durable order-processing workflow with typed activities, deterministic
+  idempotency keys, activity retries, execution, and polling.
