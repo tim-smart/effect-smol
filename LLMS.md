@@ -218,6 +218,16 @@ Build http clients with the `HttpClient` module.
 
 - **[Getting started with HttpClient](./ai-docs/src/50_http-client/10_basics.ts)**: Define a service that uses the HttpClient module to fetch data from an external API
 
+## Building HTTP servers
+
+Use the `effect/unstable/httpapi` modules to define schema-first HTTP APIs with
+typed handlers, built-in validation, and OpenAPI documentation. For lower-level
+routing control, you can also use plain `HttpEffect` server modules.
+
+- **[Creating HttpApi servers](./ai-docs/src/51_http-server/10_http-api.ts)**:
+  Define schema-first endpoints, implement grouped handlers, add auth middleware,
+  and wire everything into an HTTP server with Swagger documentation.
+
 ## Building CLI applications
 
 Use the "effect/unstable/cli" modules to build CLI applications. These modules
