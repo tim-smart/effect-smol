@@ -196,6 +196,10 @@ Learn how to safely manage resources in Effect using `Scope`s and finalizers.
   a resource, ensuring that it is properly cleaned up when the service is no
   longer needed.
 - **[Creating Layers that run background tasks](./ai-docs/src/01_effect/04_resources/20_layer-side-effects.ts)**: Use Layer.effectDiscard to encapsulate background tasks without a service interface.
+- **[Dynamic resources with LayerMap](./ai-docs/src/01_effect/04_resources/30_layer-map.ts)**:
+  Manage tenant-specific resources with `LayerMap.Service`. Each tenant gets a
+  cached database pool that can be reused, expired when idle, or invalidated
+  on demand.
 
 ## Working with Streams
 
