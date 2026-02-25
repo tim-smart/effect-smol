@@ -212,6 +212,16 @@ backpressure, and resource safety.
   - `Stream.callback` for any callback-based API
   - `NodeStream.fromReadable` for Node.js readable streams
 
+## Advanced Effect patterns
+
+Use this section for composition patterns that go beyond single operators.
+`ExecutionPlan` is useful when one retry strategy is not enough and you need
+step-by-step fallback behavior with different provider layers.
+
+- **[Custom fallback strategies with ExecutionPlan](./ai-docs/src/04_patterns/10_execution-plan.ts)**:
+  Compose retry and fallback behavior in discrete steps so each attempt can use
+  a different provider layer.
+
 ## Effect HttpClient
 
 Build http clients with the `HttpClient` module.
