@@ -218,9 +218,7 @@ backpressure, and resource safety.
 from your application Layer, then use it anywhere you need imperative execution,
 like web handlers, framework hooks, worker queues, or legacy callback APIs.
 
-- **[Using ManagedRuntime with Hono](./ai-docs/src/03_integration/10_managed-runtime.ts)**:
-  Use a module-level `ManagedRuntime` to run Effect programs from framework
-  handlers while keeping your domain logic in services and Layers.
+- **[Using ManagedRuntime with Hono](./ai-docs/src/03_integration/10_managed-runtime.ts)**: Use `ManagedRuntime` to run Effect programs from external frameworks while keeping your domain logic in services and Layers.
 
 ## Effect HttpClient
 

@@ -1,8 +1,7 @@
 /**
  * @title Using ManagedRuntime with Hono
  *
- * Use a module-level `ManagedRuntime` to run Effect programs from framework
- * handlers while keeping your domain logic in services and Layers.
+ * Use `ManagedRuntime` to run Effect programs from external frameworks while keeping your domain logic in services and Layers.
  */
 import { Effect, Layer, ManagedRuntime, Ref, Schema, ServiceMap } from "effect"
 import { Hono } from "hono"
@@ -22,26 +21,26 @@ class TodoNotFound extends Schema.TaggedErrorClass<TodoNotFound>()("TodoNotFound
 }) {}
 
 export class TodoRepo extends ServiceMap.Service<TodoRepo, {
-  getAll(): Effect.Effect<ReadonlyArray<Todo>>
+  readonly getAll: Effect.Effect<ReadonlyArray<Todo>>
   getById(id: number): Effect.Effect<Todo, TodoNotFound>
   create(payload: CreateTodoPayload): Effect.Effect<Todo>
 }>()("app/TodoRepo") {
   static readonly layer = Layer.effect(
     TodoRepo,
     Effect.gen(function*() {
-      const todos = yield* Ref.make(new Map<number, Todo>())
+      const store = new Map<number, Todo>()
       const nextId = yield* Ref.make(1)
 
-      const getAll = Effect.fn("TodoRepo.getAll")(function*() {
-        const store = yield* Ref.get(todos)
+      const getAll = Effect.gen(function*() {
         return Array.from(store.values())
-      })
+      }).pipe(
+        Effect.withSpan("TodoRepo.getAll")
+      )
 
       const getById = Effect.fn("TodoRepo.getById")(function*(id: number) {
-        const store = yield* Ref.get(todos)
         const todo = store.get(id)
         if (todo === undefined) {
-          return yield* Effect.fail(new TodoNotFound({ id }))
+          return yield* new TodoNotFound({ id })
         }
         return todo
       })
@@ -49,7 +48,7 @@ export class TodoRepo extends ServiceMap.Service<TodoRepo, {
       const create = Effect.fn("TodoRepo.create")(function*(payload: CreateTodoPayload) {
         const id = yield* Ref.getAndUpdate(nextId, (current) => current + 1)
         const todo = new Todo({ id, title: payload.title, completed: false })
-        yield* Ref.update(todos, (store) => new Map(store).set(id, todo))
+        store.set(id, todo)
         return todo
       })
 
@@ -58,14 +57,22 @@ export class TodoRepo extends ServiceMap.Service<TodoRepo, {
   )
 }
 
-// Build one runtime at module scope and reuse it in handlers.
-export const runtime = ManagedRuntime.make(TodoRepo.layer)
+// Create a global memo map that can be shared across the app. This is necessary
+// for memoization to work correctly across ManagedRuntime instances.
+export const appMemoMap = Layer.makeMemoMapUnsafe()
+
+// Create a ManagedRuntime for the TodoRepo layer. This runtime can be shared
+// across all handlers in the app, and it will manage the lifecycle of the
+// TodoRepo service and any resources it uses.
+export const runtime = ManagedRuntime.make(TodoRepo.layer, {
+  memoMap: appMemoMap
+})
 
 export const app = new Hono()
 
 app.get("/todos", async (context) => {
   const todos = await runtime.runPromise(
-    TodoRepo.use((repo) => repo.getAll())
+    TodoRepo.use((repo) => repo.getAll)
   )
   return context.json(todos)
 })
@@ -112,6 +119,8 @@ app.post("/todos", async (context) => {
 // Use `runtime.runSync` for synchronous edges or `runtime.runCallback` for
 // callback-only APIs.
 
+// When the process receives a shutdown signal, dispose the runtime to clean up
+// any resources used by the TodoRepo service and its dependencies.
 const shutdown = () => {
   void runtime.dispose()
 }
