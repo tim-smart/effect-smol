@@ -211,6 +211,10 @@ backpressure, and resource safety.
   - `Stream.fromEventListener` for DOM events
   - `Stream.callback` for any callback-based API
   - `NodeStream.fromReadable` for Node.js readable streams
+- **[Consuming and transforming streams](./ai-docs/src/02_stream/20_consuming-streams.ts)**:
+  Build a practical stream pipeline for order events with pure transforms,
+  effectful enrichment, and terminal operations for collection, folding, and
+  side-effecting consumers.
 
 ## Effect HttpClient
 
