@@ -212,6 +212,16 @@ backpressure, and resource safety.
   - `Stream.callback` for any callback-based API
   - `NodeStream.fromReadable` for Node.js readable streams
 
+## Batching external requests
+
+Effect can batch many request descriptions into fewer external calls. Define
+request types with `Request`, implement a `RequestResolver` for batched
+execution, and issue requests with `Effect.request` from regular Effect code.
+
+- **[Batching requests with RequestResolver](./ai-docs/src/05_batching/10_request-resolver.ts)**:
+  Define request types with `Request.Class`, resolve them in batches with
+  `RequestResolver.make`, and run many `Effect.request` calls concurrently.
+
 ## Effect HttpClient
 
 Build http clients with the `HttpClient` module.
