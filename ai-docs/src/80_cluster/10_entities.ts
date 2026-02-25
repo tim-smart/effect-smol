@@ -1,5 +1,5 @@
 /**
- * @title Defining and running cluster entities
+ * @title Defining cluster entities
  *
  * Define entity RPCs, implement stateful handlers, and call entities through a
  * typed client. This example also shows `SingleRunner.layer` for local
