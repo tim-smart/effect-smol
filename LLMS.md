@@ -214,9 +214,7 @@ backpressure, and resource safety.
 
 ## Batching external requests
 
-Effect can batch many request descriptions into fewer external calls. Define
-request types with `Request`, implement a `RequestResolver` for batched
-execution, and issue requests with `Effect.request` from regular Effect code.
+Learn how to batch multiple requests into fewer external calls.
 
 - **[Batching requests with RequestResolver](./ai-docs/src/05_batching/10_request-resolver.ts)**: Define request types with `Request.Class`, resolve them in batches with `RequestResolver`.
 
