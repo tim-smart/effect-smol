@@ -287,6 +287,86 @@ export const HttpContext = Schema.Struct({
 // =============================================================================
 
 /**
+ * Provider-specific metadata for `RateLimitError`.
+ *
+ * @since 1.0.0
+ * @category provider options
+ */
+export interface RateLimitErrorMetadata extends ProviderMetadata {}
+
+/**
+ * Provider-specific metadata for `QuotaExhaustedError`.
+ *
+ * @since 1.0.0
+ * @category provider options
+ */
+export interface QuotaExhaustedErrorMetadata extends ProviderMetadata {}
+
+/**
+ * Provider-specific metadata for `AuthenticationError`.
+ *
+ * @since 1.0.0
+ * @category provider options
+ */
+export interface AuthenticationErrorMetadata extends ProviderMetadata {}
+
+/**
+ * Provider-specific metadata for `ContentPolicyError`.
+ *
+ * @since 1.0.0
+ * @category provider options
+ */
+export interface ContentPolicyErrorMetadata extends ProviderMetadata {}
+
+/**
+ * Provider-specific metadata for `InvalidRequestError`.
+ *
+ * @since 1.0.0
+ * @category provider options
+ */
+export interface InvalidRequestErrorMetadata extends ProviderMetadata {}
+
+/**
+ * Provider-specific metadata for `InternalProviderError`.
+ *
+ * @since 1.0.0
+ * @category provider options
+ */
+export interface InternalProviderErrorMetadata extends ProviderMetadata {}
+
+/**
+ * Provider-specific metadata for `InvalidOutputError`.
+ *
+ * @since 1.0.0
+ * @category provider options
+ */
+export interface InvalidOutputErrorMetadata extends ProviderMetadata {}
+
+/**
+ * Provider-specific metadata for `StructuredOutputError`.
+ *
+ * @since 1.0.0
+ * @category provider options
+ */
+export interface StructuredOutputErrorMetadata extends ProviderMetadata {}
+
+/**
+ * Provider-specific metadata for `UnsupportedSchemaError`.
+ *
+ * @since 1.0.0
+ * @category provider options
+ */
+export interface UnsupportedSchemaErrorMetadata extends ProviderMetadata {}
+
+/**
+ * Provider-specific metadata for `UnknownError`.
+ *
+ * @since 1.0.0
+ * @category provider options
+ */
+export interface UnknownErrorMetadata extends ProviderMetadata {}
+
+/**
  * Error indicating the request was rate limited.
  *
  * Rate limit errors are always retryable. When `retryAfter` is provided,
