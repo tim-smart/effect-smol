@@ -220,9 +220,7 @@ metrics. For exporting telemetry, use the lightweight Otlp modules from
 `@effect/opentelemetry` NodeSdk when integrating with an existing OpenTelemetry
 setup.
 
-- **[Customizing logging](./ai-docs/src/08_observability/10_logging.ts)**:
-  Configure structured logs, log-level filtering, and custom logger layers for
-  production applications.
+- **[Customizing logging](./ai-docs/src/08_observability/10_logging.ts)**: Configure loggers & log-level filtering for production applications.
 - **[Setting up tracing with Otlp modules](./ai-docs/src/08_observability/20_otlp-tracing.ts)**: Configure Otlp tracing + log export with a reusable observability layer.
 
 ## Effect HttpClient

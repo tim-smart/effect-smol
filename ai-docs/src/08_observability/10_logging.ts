@@ -1,38 +1,46 @@
 /**
  * @title Customizing logging
  *
- * Configure structured logs, log-level filtering, and custom logger layers for
- * production applications.
+ * Configure loggers & log-level filtering for production applications.
  */
-import { Effect, Layer, Logger, LogLevel, References } from "effect"
+import { Config, Effect, Layer, Logger, References } from "effect"
 
 // Build a logger layer that emits one JSON line per log entry.
-export const JsonLoggerLive = Logger.layer([Logger.consoleJson])
+export const JsonLoggerLayer = Logger.layer([Logger.consoleJson])
 
 // Raise the minimum level to "Warn" to skip debug/info logs.
 export const WarnAndAbove = Layer.succeed(References.MinimumLogLevel, "Warn")
 
 // Define a custom logger for app-specific formatting and routing.
-export const appLogger = Logger.make((options) => {
-  if (!LogLevel.isGreaterThanOrEqualTo(options.logLevel, "Info")) {
-    return
-  }
+export const appLogger = Effect.gen(function*() {
+  // Here you could initialize a connection to an external logging service, set
+  // up log file rotation, etc.
+  yield* Effect.logDebug("initializing app logger")
 
-  const message = Array.isArray(options.message)
-    ? options.message.map(String).join(" ")
-    : String(options.message)
-
-  const annotations = Object.entries(options.fiber.getRef(References.CurrentLogAnnotations))
-    .map(([key, value]) => `${key}=${String(value)}`)
-    .join(" ")
-
-  console.log(
-    `${options.date.toISOString()} [${options.logLevel}] ${message}${annotations.length > 0 ? ` ${annotations}` : ""}`
-  )
+  return yield* Logger.batched(Logger.formatStructured, {
+    window: "1 second",
+    flush: Effect.fn(function*(batch) {
+      // In a real implementation, this is where you would send the batch of log entries to an external logging service or write them to a file.
+      console.log(`Flushing ${batch.length} log entries`)
+    })
+  })
 })
 
-export const AppLoggerLive = Logger.layer([appLogger])
+export const AppLoggerLayer = Logger.layer([appLogger]).pipe(
+  Layer.provideMerge(WarnAndAbove) // Start with "Warn" level for the app logger.
+)
 
+// Create a logger layer that uses the default logger for development, and the
+// custom logger for production
+export const LoggerLayer = Layer.unwrap(Effect.gen(function*() {
+  const env = yield* Config.string("NODE_ENV").pipe(Config.withDefault(() => "development"))
+  if (env === "production") {
+    return AppLoggerLayer
+  }
+  return Logger.layer([Logger.defaultLogger])
+}))
+
+// Example effect that logs at various levels during a checkout flow.
 export const logCheckoutFlow = Effect.gen(function*() {
   yield* Effect.logDebug("loading checkout state")
 
@@ -47,15 +55,4 @@ export const logCheckoutFlow = Effect.gen(function*() {
   }),
   // Add a duration span so each log line includes checkout=<N>ms metadata.
   Effect.withLogSpan("checkout")
-)
-
-// Compose logging concerns as layers and provide them once at the program edge.
-export const productionLogging = logCheckoutFlow.pipe(
-  Effect.provide(JsonLoggerLive),
-  Effect.provide(WarnAndAbove)
-)
-
-export const customLogging = logCheckoutFlow.pipe(
-  Effect.provide(AppLoggerLive),
-  Effect.provideService(References.MinimumLogLevel, "Info")
 )
