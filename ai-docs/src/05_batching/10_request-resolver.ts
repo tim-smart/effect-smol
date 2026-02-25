@@ -1,10 +1,9 @@
 /**
  * @title Batching requests with RequestResolver
  *
- * Define request types with `Request.Class`, resolve them in batches with
- * `RequestResolver.make`, and run many `Effect.request` calls concurrently.
+ * Define request types with `Request.Class`, resolve them in batches with `RequestResolver`.
  */
-import { Array, Effect, Exit, Ref, Request, RequestResolver, Schema } from "effect"
+import { Effect, Exit, Layer, Request, RequestResolver, Schema, ServiceMap, Tracer } from "effect"
 
 export class User extends Schema.Class<User>("User")({
   id: Schema.Number,
@@ -16,68 +15,75 @@ export class UserNotFound extends Schema.TaggedErrorClass<UserNotFound>()("UserN
   id: Schema.Number
 }) {}
 
-// Request classes model a single external lookup.
-export class GetUserById extends Request.Class<{ readonly id: number }, User, UserNotFound> {}
+export class Users extends ServiceMap.Service<Users, {
+  getUserById(id: number): Effect.Effect<User, UserNotFound>
+}>()("app/Users") {
+  static readonly layer = Layer.effect(
+    Users,
+    Effect.gen(function*() {
+      // Request classes model a single external lookup.
+      class GetUserById extends Request.Class<
+        { readonly id: number },
+        User, // The success type of the request
+        UserNotFound, // The error type of the request
+        never // The requirements type of the request, if any
+      > {}
 
-// Simulate an external data source that supports batched lookup.
-const usersTable = new Map<number, User>([
-  [1, new User({ id: 1, name: "Ada Lovelace", email: "ada@acme.dev" })],
-  [2, new User({ id: 2, name: "Alan Turing", email: "alan@acme.dev" })],
-  [3, new User({ id: 3, name: "Grace Hopper", email: "grace@acme.dev" })]
-])
+      // Simulate an external data source that supports batched lookup.
+      const usersTable = new Map<number, User>([
+        [1, new User({ id: 1, name: "Ada Lovelace", email: "ada@acme.dev" })],
+        [2, new User({ id: 2, name: "Alan Turing", email: "alan@acme.dev" })],
+        [3, new User({ id: 3, name: "Grace Hopper", email: "grace@acme.dev" })]
+      ])
 
-const makeResolver = Effect.fnUntraced(function*() {
-  // Track each batch so we can inspect what the resolver executed.
-  const executedBatches = yield* Ref.make<ReadonlyArray<ReadonlyArray<number>>>([])
+      const resolver = yield* RequestResolver.make<GetUserById>(Effect.fnUntraced(function*(entries) {
+        for (const entry of entries) {
+          const user = usersTable.get(entry.request.id)
 
-  const fetchUsersBatch = Effect.fnUntraced(function*(ids: ReadonlyArray<number>) {
-    // Record the exact batch IDs sent to the external system.
-    yield* Ref.update(executedBatches, (batches) => [...batches, ids])
+          // If the request had requirements, you can access them with
+          // `entry.services`
+          const requestSpan = ServiceMap.getOption(entry.services, Tracer.ParentSpan)
+          console.log("Request span", requestSpan)
 
-    return new Map(ids.flatMap((id) => {
-      const user = usersTable.get(id)
-      return user ? [[id, user] as const] : []
-    }))
-  })
+          if (user) {
+            // Complete requests with .completeUnsafe and pass in an Exit value
+            entry.completeUnsafe(Exit.succeed(user))
+          } else {
+            entry.completeUnsafe(Exit.fail(new UserNotFound({ id: entry.request.id })))
+          }
+        }
+      })).pipe(
+        // Control the delay before the resolver is executed. This allows more
+        // requests to be batched together, but also adds latency to the first
+        // request.
+        RequestResolver.setDelay("10 millis"),
+        // RequestResolver.withSpan adds a span around the resolver execution,
+        // and also sets up span links for each request
+        RequestResolver.withSpan("Users.getUserById.resolver"),
+        // RequestResolver.withCache adds a simple LRU cache to avoid repeated
+        // lookups for the same ID.
+        RequestResolver.withCache({ capacity: 1024 })
+      )
 
-  const resolver = RequestResolver.make<GetUserById>(
-    Effect.fnUntraced(function*(entries) {
-      // `entries` can contain duplicate IDs. Collapse them before the external
-      // call so we only fetch each user once per batch.
-      const uniqueIds = Array.dedupe(entries.map((entry) => entry.request.id))
-      const usersById = yield* fetchUsersBatch(uniqueIds)
-
-      // Every request entry still receives its own completion result.
-      for (const entry of entries) {
-        const user = usersById.get(entry.request.id)
-        entry.completeUnsafe(
-          user
-            ? Exit.succeed(user)
-            : Exit.fail(new UserNotFound({ id: entry.request.id }))
+      // Wrap the resolver in a service method. The resolver batches calls to
+      // `getUserById` that occur within the delay window.
+      const getUserById = (id: number) =>
+        Effect.request(new GetUserById({ id }), resolver).pipe(
+          Effect.withSpan("Users.getUserById", { attributes: { userId: id } })
         )
-      }
+
+      return { getUserById } as const
     })
   )
-
-  const getUserById = Effect.fnUntraced(function*(id: number) {
-    return yield* Effect.request(new GetUserById({ id }), resolver)
-  })
-
-  return { getUserById, executedBatches } as const
-})
+}
 
 // Run multiple lookups concurrently. The resolver receives one batch and
 // internally deduplicates repeated IDs for the external call.
 export const batchedLookupExample = Effect.gen(function*() {
-  const { getUserById, executedBatches } = yield* makeResolver()
+  const { getUserById } = yield* Users
 
-  const users = yield* Effect.forEach([1, 2, 1, 3, 2], getUserById, {
+  // This will only trigger a single call to the resolver with the unique IDs [1, 2, 3].
+  yield* Effect.forEach([1, 2, 1, 3, 2], getUserById, {
     concurrency: "unbounded"
   })
-
-  const batches = yield* Ref.get(executedBatches)
-
-  // `batches` is `[[1, 2, 3]]`, while `users` keeps caller order and duplicate
-  // lookups.
-  return { users, batches } as const
 })
