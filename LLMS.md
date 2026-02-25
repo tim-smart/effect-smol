@@ -212,6 +212,16 @@ backpressure, and resource safety.
   - `Stream.callback` for any callback-based API
   - `NodeStream.fromReadable` for Node.js readable streams
 
+## Integrating Effect into existing applications
+
+`ManagedRuntime` bridges Effect programs with non-Effect code. Build one runtime
+from your application Layer, then use it anywhere you need imperative execution,
+like web handlers, framework hooks, worker queues, or legacy callback APIs.
+
+- **[Using ManagedRuntime with Hono](./ai-docs/src/03_integration/10_managed-runtime.ts)**:
+  Use a module-level `ManagedRuntime` to run Effect programs from framework
+  handlers while keeping your domain logic in services and Layers.
+
 ## Effect HttpClient
 
 Build http clients with the `HttpClient` module.
