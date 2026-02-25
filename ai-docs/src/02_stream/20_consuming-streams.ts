@@ -1,68 +1,40 @@
 /**
  * @title Consuming and transforming streams
  *
- * Build a practical stream pipeline for order events with pure transforms,
- * effectful enrichment, and terminal operations for collection, folding, and
- * side-effecting consumers.
+ * How to transform and consume streams using operators like `map`, `flatMap`, `filter`, `mapEffect`, and various `run*` methods.
  */
-import { Chunk, Effect, Sink, Stream } from "effect"
+import { Effect, Sink, Stream } from "effect"
 
-type Order = {
+interface Order {
   readonly id: string
   readonly customerId: string
   readonly status: "paid" | "refunded"
   readonly subtotalCents: number
   readonly shippingCents: number
-  readonly country: "US" | "CA"
+  readonly country: "US" | "CA" | "NZ"
 }
 
-type NormalizedOrder = Order & {
+interface NormalizedOrder extends Order {
   readonly totalCents: number
 }
 
-type EnrichedOrder = NormalizedOrder & {
+interface EnrichedOrder extends NormalizedOrder {
   readonly taxCents: number
   readonly grandTotalCents: number
   readonly priority: "normal" | "high"
 }
 
 // Start with structured order events from an in-memory source.
-export const orderEvents = Stream.fromIterable<Order>([
-  {
-    id: "ord_1001",
-    customerId: "cus_1",
-    status: "paid",
-    subtotalCents: 4_500,
-    shippingCents: 500,
-    country: "US"
-  },
-  {
-    id: "ord_1002",
-    customerId: "cus_2",
-    status: "refunded",
-    subtotalCents: 8_000,
-    shippingCents: 700,
-    country: "CA"
-  },
-  {
-    id: "ord_1003",
-    customerId: "cus_3",
-    status: "paid",
-    subtotalCents: 12_000,
-    shippingCents: 900,
-    country: "CA"
-  },
-  {
-    id: "ord_1004",
-    customerId: "cus_4",
-    status: "paid",
-    subtotalCents: 40_000,
-    shippingCents: 1_200,
-    country: "US"
-  }
-])
+export const orderEvents = Stream.succeed<Order>({
+  id: "ord_1001",
+  customerId: "cus_1",
+  status: "paid",
+  subtotalCents: 4_500,
+  shippingCents: 500,
+  country: "US"
+})
 
-// A pure transformation step for per-order totals.
+// Use `Stream.map` for pure per-element transforms.
 export const normalizedOrders = orderEvents.pipe(
   Stream.map((order): NormalizedOrder => ({
     ...order,
@@ -70,27 +42,45 @@ export const normalizedOrders = orderEvents.pipe(
   }))
 )
 
-// Filter down to only billable orders.
+// `Stream.filter` lets you exclude elements that don't match a predicate.
 export const paidOrders = normalizedOrders.pipe(
   Stream.filter((order) => order.status === "paid")
 )
 
-const enrichOrder: (order: NormalizedOrder) => Effect.Effect<EnrichedOrder> = Effect.fnUntraced(
-  function*(order: NormalizedOrder) {
-    // Simulate effectful enrichment (for example, tax/risk lookup).
-    yield* Effect.sleep("5 millis")
-
-    const taxRate = order.country === "US" ? 0.08 : 0.13
-    const taxCents = Math.round(order.totalCents * taxRate)
-
-    return {
-      ...order,
-      taxCents,
-      grandTotalCents: order.totalCents + taxCents,
-      priority: order.totalCents >= 20_000 ? "high" : "normal"
-    }
-  }
+// Use `Stream.flatMap` to transform each element into a stream, and flatten the
+// results.
+export const allOrders = Stream.make("US", "CA", "NZ").pipe(
+  Stream.flatMap(
+    (country) =>
+      Stream.range(1, 50).pipe(
+        Stream.map((i): Order => ({
+          id: `ord_${country}_${i}`,
+          customerId: `cus_${i}`,
+          status: i % 10 === 0 ? "refunded" : "paid",
+          subtotalCents: Math.round(Math.random() * 100_000),
+          shippingCents: Math.round(Math.random() * 10_000),
+          country
+        }))
+      ),
+    // Optionally control the concurrency of the flatMap with the second argument.
+    { concurrency: 2 }
+  )
 )
+
+const enrichOrder = Effect.fn(function*(order: NormalizedOrder): Effect.fn.Return<EnrichedOrder> {
+  // Simulate effectful enrichment (for example, tax/risk lookup).
+  yield* Effect.sleep("5 millis")
+
+  const taxRate = order.country === "US" ? 0.08 : 0.13
+  const taxCents = Math.round(order.totalCents * taxRate)
+
+  return {
+    ...order,
+    taxCents,
+    grandTotalCents: order.totalCents + taxCents,
+    priority: order.totalCents >= 20_000 ? "high" : "normal"
+  }
+})
 
 // `Stream.mapEffect` performs effectful per-element transforms with concurrency control.
 export const enrichedPaidOrders = paidOrders.pipe(
@@ -100,11 +90,8 @@ export const enrichedPaidOrders = paidOrders.pipe(
 // `runCollect` gathers all stream outputs into an immutable array.
 export const collectedOrders = Stream.runCollect(enrichedPaidOrders)
 
-// Use `Chunk` utilities when you want `Chunk`-specific APIs.
-export const collectedOrderIds = collectedOrders.pipe(
-  Effect.map((orders) => Chunk.fromIterable(orders)),
-  Effect.map((orders) => Chunk.map(orders, (order) => order.id))
-)
+// `runDrain` runs the stream for its effects, ignoring all outputs.
+export const drained = Stream.runDrain(enrichedPaidOrders)
 
 // `runForEach` executes an effectful consumer for every element.
 export const logOrders = enrichedPaidOrders.pipe(
