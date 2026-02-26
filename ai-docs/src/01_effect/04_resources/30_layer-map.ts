@@ -1,9 +1,8 @@
 /**
  * @title Dynamic resources with LayerMap
  *
- * Manage tenant-specific resources with `LayerMap.Service`. Each tenant gets a
- * cached database pool that can be reused, expired when idle, or invalidated
- * on demand.
+ * Use `LayerMap.Service` to dynamically build and manage resources that are
+ * keyed by some identifier, such as a tenant ID.
  */
 import { Effect, Layer, LayerMap, Schema, ServiceMap } from "effect"
 
@@ -35,19 +34,11 @@ export class DatabasePool extends ServiceMap.Service<DatabasePool, {
           return DatabasePool.of({
             tenantId,
             connectionId,
-            query: Effect.fn("DatabasePool.query")((sql: string) =>
-              Effect.try({
-                try: () => {
-                  if (sql.includes("DROP ")) {
-                    throw new Error("Destructive SQL statements are disabled")
-                  }
-                  return [
-                    { id: 1, email: `admin@${tenantId}.example.com` },
-                    { id: 2, email: `ops@${tenantId}.example.com` }
-                  ]
-                },
-                catch: (cause) => new DatabaseQueryError({ tenantId, cause })
-              })
+            query: Effect.fn("DatabasePool.query")((_sql: string) =>
+              Effect.succeed([
+                { id: 1, email: `admin@${tenantId}.example.com` },
+                { id: 2, email: `ops@${tenantId}.example.com` }
+              ])
             )
           })
         }),
@@ -56,54 +47,40 @@ export class DatabasePool extends ServiceMap.Service<DatabasePool, {
     )
 }
 
+// extend `LayerMap.Service` to create a `LayerMap` service
 export class PoolMap extends LayerMap.Service<PoolMap>()("app/PoolMap", {
   // `lookup` tells LayerMap how to build a layer for each tenant key.
   lookup: (tenantId: string) => DatabasePool.layer(tenantId),
 
+  // You can also use the layers option for a static set of layers
+  // layers: {
+  //   acme: DatabasePool.layer("acme"),
+  //   globex: DatabasePool.layer("globex")
+  // },
+
   // If a pool is not used for this duration, it is released automatically.
-  idleTimeToLive: "10 minutes"
+  idleTimeToLive: "1 minute"
 }) {}
 
 const queryUsersForCurrentTenant = Effect.gen(function*() {
+  // Run a query agnostic of the tenant. The correct pool will be provided by
+  // the LayerMap.
   const pool = yield* DatabasePool
   return yield* pool.query("SELECT id, email FROM users ORDER BY id")
 })
 
-// `PoolMap.get` returns a tenant-specific Layer that provides `DatabasePool`.
-export const queryTenantUsers = Effect.fn("queryTenantUsers")((tenantId: string) =>
-  queryUsersForCurrentTenant.pipe(
-    Effect.provide(PoolMap.get(tenantId))
-  )
-)
-
-// `PoolMap.services` gives direct scoped access to all services for a key.
-export const inspectTenantPool = Effect.fn("inspectTenantPool")(function*(tenantId: string) {
-  const services = yield* PoolMap.services(tenantId)
-  const pool = ServiceMap.get(services, DatabasePool)
-
-  return {
-    tenantId: pool.tenantId,
-    connectionId: pool.connectionId
-  }
-})
-
-// `PoolMap.invalidate` forces a key to rebuild on the next access.
-export const refreshTenantPool = Effect.fn("refreshTenantPool")((tenantId: string) => PoolMap.invalidate(tenantId))
-
 export const program = Effect.gen(function*() {
-  const usersBeforeInvalidate = yield* queryTenantUsers("acme")
-  const poolBeforeInvalidate = yield* inspectTenantPool("acme")
+  yield* queryUsersForCurrentTenant.pipe(
+    // Use `PoolMap.get` to access the pool for a specific tenant. The first
+    // time this is called for a tenant, the pool will be built using the
+    // `lookup` function defined in `PoolMap`. Subsequent calls will reuse the
+    // cached pool until it is idle for too long or invalidated.
+    Effect.provide(PoolMap.get("acme"))
+  )
 
-  yield* refreshTenantPool("acme")
-
-  const poolAfterInvalidate = yield* inspectTenantPool("acme")
-
-  return {
-    usersBeforeInvalidate,
-    poolBeforeInvalidate,
-    poolAfterInvalidate
-  }
+  // `PoolMap.invalidate` forces a key to rebuild on the next access.
+  yield* PoolMap.invalidate("acme")
 }).pipe(
-  Effect.provide(PoolMap.layer),
-  Effect.scoped
+  // Provide the `PoolMap` layer to the entire program.
+  Effect.provide(PoolMap.layer)
 )
