@@ -241,18 +241,8 @@ setup.
 
 ## Testing Effect programs
 
-Use `@effect/vitest` to test Effect programs with the same runtime semantics as
-your app code. Use `it.effect` for tests that use test services (for example,
-`TestClock`), use `it.live` when you need real runtime behavior, and use
-`layer(...)` / `it.layer(...)` to share service layers across tests.
-
-- **[Writing Effect tests with @effect/vitest](./ai-docs/src/09_testing/10_effect-tests.ts)**:
-  Use `it.effect` for Effect-based tests, `it.effect.each` for parameterized
-  tests, `it.live` when a test needs real runtime services, and `TestClock`
-  when you need deterministic control over time.
-- **[Testing services with shared layers](./ai-docs/src/09_testing/20_layer-tests.ts)**:
-  Use `layer(...)` to share expensive setup across tests, and `it.layer(...)`
-  to compose additional test layers for nested suites.
+- **[Writing Effect tests with @effect/vitest](./ai-docs/src/09_testing/10_effect-tests.ts)**: Using `it.effect` for Effect-based tests.
+- **[Testing services with shared layers](./ai-docs/src/09_testing/20_layer-tests.ts)**: How to test Effect services that depend on other services.
 
 ## Effect HttpClient
 

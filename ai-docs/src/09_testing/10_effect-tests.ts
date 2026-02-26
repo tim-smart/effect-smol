@@ -1,17 +1,15 @@
 /**
  * @title Writing Effect tests with @effect/vitest
  *
- * Use `it.effect` for Effect-based tests, `it.effect.each` for parameterized
- * tests, `it.live` when a test needs real runtime services, and `TestClock`
- * when you need deterministic control over time.
+ * Using `it.effect` for Effect-based tests.
  */
 import { assert, describe, it } from "@effect/vitest"
-import { Effect, Fiber } from "effect"
-import { FastCheck, TestClock } from "effect/testing"
+import { Effect, Fiber, Schema } from "effect"
+import { TestClock } from "effect/testing"
 
 describe("@effect/vitest basics", () => {
   it.effect("runs Effect code with assert helpers", () =>
-    Effect.sync(() => {
+    Effect.gen(function*() {
       const upper = ["ada", "lin"].map((name) => name.toUpperCase())
       assert.deepStrictEqual(upper, ["ADA", "LIN"])
       assert.strictEqual(upper.length, 2)
@@ -23,7 +21,7 @@ describe("@effect/vitest basics", () => {
     { input: " Lin ", expected: "lin" },
     { input: " Nia ", expected: "nia" }
   ])("parameterized normalization %#", ({ input, expected }) =>
-    Effect.sync(() => {
+    Effect.gen(function*() {
       assert.strictEqual(input.trim().toLowerCase(), expected)
     }))
 
@@ -47,12 +45,11 @@ describe("@effect/vitest basics", () => {
       assert.isTrue(Date.now() >= startedAt)
     }))
 
-  // For property-based testing, use `it.effect.prop` with FastCheck
-  // arbitraries and return `true` when the property holds.
-  it.effect.prop("reversing twice is identity", [FastCheck.string()], ([value]) =>
-    Effect.sync(() => {
+  // For property-based testing, use `it.effect.prop` with Schema-based
+  // arbitraries
+  it.effect.prop("reversing twice is identity", [Schema.String], ([value]) =>
+    Effect.gen(function*() {
       const reversedTwice = value.split("").reverse().reverse().join("")
       assert.strictEqual(reversedTwice, value)
-      return true
     }))
 })
