@@ -258,9 +258,18 @@ managing the flow of a CLI application.
 ## Working with Cluster entities
 
 The cluster modules let you model stateful services as entities and distribute
+<<<<<<< HEAD
 them across multiple machines.
 
 - **[Defining cluster entities](./ai-docs/src/80_cluster/10_entities.ts)**:
+=======
+them across shards. You define each entity as a set of typed RPCs, implement
+stateful handlers, then call those handlers through a generated client proxy.
+For local development and tests, `SingleRunner` gives you a single-node sharding
+runtime with the same entity model.
+
+- **[Defining and running cluster entities](./ai-docs/src/80_cluster/10_entities.ts)**:
+>>>>>>> fff80e59 (EFF-556 Add cluster entities ai docs section (#3))
   Define entity RPCs, implement stateful handlers, and call entities through a
   typed client. This example also shows `SingleRunner.layer` for local
   development and `maxIdleTime` for passivation.
