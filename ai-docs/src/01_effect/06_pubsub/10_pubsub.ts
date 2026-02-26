@@ -1,10 +1,9 @@
 /**
  * @title Broadcasting domain events with PubSub
  *
- * Build an in-process event bus with `PubSub` and expose it as a service so
- * multiple consumers can independently process the same events.
+ * Build an in-process event bus with `PubSub` and expose it as a service.
  */
-import { Effect, Layer, PubSub, type Scope, ServiceMap } from "effect"
+import { Effect, Layer, PubSub, ServiceMap, Stream } from "effect"
 
 export type OrderEvent =
   | { readonly _tag: "OrderPlaced"; readonly orderId: string }
@@ -12,74 +11,46 @@ export type OrderEvent =
   | { readonly _tag: "OrderShipped"; readonly orderId: string }
 
 export class OrderEvents extends ServiceMap.Service<OrderEvents, {
-  readonly publish: (event: OrderEvent) => Effect.Effect<boolean>
-  readonly publishAll: (events: ReadonlyArray<OrderEvent>) => Effect.Effect<boolean>
-  readonly subscribe: Effect.Effect<PubSub.Subscription<OrderEvent>, never, Scope.Scope>
-}>()("ai-docs/OrderEvents") {
+  publish(event: OrderEvent): Effect.Effect<void>
+  publishAll(events: ReadonlyArray<OrderEvent>): Effect.Effect<void>
+  readonly subscribe: Stream.Stream<OrderEvent>
+}>()("acme/OrderEvents") {
   static readonly layer = Layer.effect(
     OrderEvents,
     Effect.gen(function*() {
-      // Backpressured PubSub with replay gives reliable fan-out and lets late
-      // subscribers catch up on recent events after restarts.
+      // Use PubSub.bounded to create a PubSub with backpressure support.
+      // You can also use PubSub.unbounded if you don't need backpressure.
       const pubsub = yield* PubSub.bounded<OrderEvent>({
         capacity: 256,
+        // Optionally add a replay buffer to let late subscribers catch up on
+        // recent events after restarts.
         replay: 50
       })
 
-      const publish = Effect.fnUntraced(function*(event: OrderEvent) {
-        return yield* PubSub.publish(pubsub, event)
+      // Ensure the PubSub is properly shut down when the service is no longer
+      // needed.
+      yield* Effect.addFinalizer(() => PubSub.shutdown(pubsub))
+
+      const publish = Effect.fn("OrderEvents.publish")(function*(event: OrderEvent) {
+        yield* PubSub.publish(pubsub, event)
       })
 
-      const publishAll = Effect.fnUntraced(function*(events: ReadonlyArray<OrderEvent>) {
-        return yield* PubSub.publishAll(pubsub, events)
+      const publishAll = Effect.fn("OrderEvents.publishAll")(function*(events: ReadonlyArray<OrderEvent>) {
+        yield* PubSub.publishAll(pubsub, events)
       })
+
+      // Create a Stream that emits events published to the PubSub.
+      //
+      // Each subscriber will receive all events published after they subscribe,
+      // and if a replay buffer is configured, they will also receive the most
+      // recent events that were published before they subscribed.
+      const subscribe = Stream.fromPubSub(pubsub)
 
       return OrderEvents.of({
         publish,
         publishAll,
-        subscribe: PubSub.subscribe(pubsub)
+        subscribe
       })
     })
   )
 }
-
-// Each subscriber sees the same events and can consume at its own pace.
-export const fanOutToMultipleConsumers = Effect.scoped(
-  Effect.gen(function*() {
-    const orderEvents = yield* OrderEvents
-
-    const billingSubscription = yield* orderEvents.subscribe
-    const shippingSubscription = yield* orderEvents.subscribe
-
-    yield* orderEvents.publishAll([
-      { _tag: "OrderPlaced", orderId: "ord-100" },
-      { _tag: "PaymentCaptured", orderId: "ord-100" },
-      { _tag: "OrderShipped", orderId: "ord-100" }
-    ])
-
-    const billingEvents = yield* PubSub.takeUpTo(billingSubscription, 3)
-    const shippingEvents = yield* PubSub.takeUpTo(shippingSubscription, 3)
-
-    return { billingEvents, shippingEvents }
-  })
-).pipe(
-  Effect.provide(OrderEvents.layer)
-)
-
-// Replay lets a subscriber that starts later still receive recent events.
-export const lateSubscriberReceivesReplay = Effect.scoped(
-  Effect.gen(function*() {
-    const orderEvents = yield* OrderEvents
-
-    yield* orderEvents.publishAll([
-      { _tag: "OrderPlaced", orderId: "ord-200" },
-      { _tag: "PaymentCaptured", orderId: "ord-200" },
-      { _tag: "OrderShipped", orderId: "ord-200" }
-    ])
-
-    const subscription = yield* orderEvents.subscribe
-    return yield* PubSub.takeAll(subscription)
-  })
-).pipe(
-  Effect.provide(OrderEvents.layer)
-)
