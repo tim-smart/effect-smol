@@ -211,17 +211,8 @@ Use `PubSub` when you need one producer to fan out messages to many consumers.
 
 ## Running Effect programs
 
-Use `NodeRuntime.runMain` for standalone Node.js entrypoints (or `BunRuntime.runMain` in Bun with the same API shape). Use `Layer.launch` when your application is primarily a composition of layers, such as an HTTP server and background workers.
-
-Both patterns integrate with runtime signal handling (`SIGINT` / `SIGTERM`) so shutdown is graceful.
-
-- **[Running effects with NodeRuntime and BunRuntime](./ai-docs/src/01_effect/05_running/10_run-main.ts)**:
-  Use `NodeRuntime.runMain` to run an Effect program as your process
-  entrypoint. It handles process exit codes, signal interruption, and optional
-  automatic error reporting.
-- **[Using Layer.launch as the application entry point](./ai-docs/src/01_effect/05_running/20_layer-launch.ts)**:
-  Use `Layer.launch` when your app is mostly layer composition. This keeps the
-  process alive while the layer is running and shuts it down when interrupted.
+- **[Running effects with NodeRuntime and BunRuntime](./ai-docs/src/01_effect/05_running/10_run-main.ts)**: Use `NodeRuntime.runMain` to run an Effect program as your process entrypoint.
+- **[Using Layer.launch as the application entry point](./ai-docs/src/01_effect/05_running/20_layer-launch.ts)**: Use `Layer.launch` to run a long-running Effect program as your process entrypoint.
 
 ## Working with Streams
 
