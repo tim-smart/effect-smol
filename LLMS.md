@@ -264,3 +264,6 @@ them across multiple machines.
   Define entity RPCs, implement stateful handlers, and call entities through a
   typed client. This example also shows `SingleRunner.layer` for local
   development and `maxIdleTime` for passivation.
+- **[Running cluster singletons](./ai-docs/src/80_cluster/20_singletons.ts)**:
+  Use `Singleton.make` for long-running jobs that must have exactly one active
+  instance across all runners.
