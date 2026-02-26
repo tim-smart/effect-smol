@@ -203,16 +203,16 @@ Learn how to safely manage resources in Effect using `Scope`s and finalizers.
   Use `LayerMap.Service` to dynamically build and manage resources that are
   keyed by some identifier, such as a tenant ID.
 
+## Running Effect programs
+
+- **[Running effects with NodeRuntime and BunRuntime](./ai-docs/src/01_effect/05_running/10_run-main.ts)**: Use `NodeRuntime.runMain` to run an Effect program as your process entrypoint.
+- **[Using Layer.launch as the application entry point](./ai-docs/src/01_effect/05_running/20_layer-launch.ts)**: Use `Layer.launch` to run a long-running Effect program as your process entrypoint.
+
 ## Broadcasting messages with PubSub
 
 Use `PubSub` when you need one producer to fan out messages to many consumers.
 
 - **[Broadcasting domain events with PubSub](./ai-docs/src/01_effect/06_pubsub/10_pubsub.ts)**: Build an in-process event bus with `PubSub` and expose it as a service.
-
-## Running Effect programs
-
-- **[Running effects with NodeRuntime and BunRuntime](./ai-docs/src/01_effect/05_running/10_run-main.ts)**: Use `NodeRuntime.runMain` to run an Effect program as your process entrypoint.
-- **[Using Layer.launch as the application entry point](./ai-docs/src/01_effect/05_running/20_layer-launch.ts)**: Use `Layer.launch` to run a long-running Effect program as your process entrypoint.
 
 ## Working with Streams
 
