@@ -261,6 +261,19 @@ setup.
 - **[Writing Effect tests with @effect/vitest](./ai-docs/src/09_testing/10_effect-tests.ts)**: Using `it.effect` for Effect-based tests.
 - **[Testing services with shared layers](./ai-docs/src/09_testing/20_layer-tests.ts)**: How to test Effect services that depend on other services.
 
+## Working with Cache and PersistedCache
+
+Use `Cache` to avoid repeating expensive effects inside a running process.
+Use `PersistedCache` when cache entries should survive restarts by writing
+entries to a `Persistence` backend.
+
+- **[Caching effects with Cache](./ai-docs/src/07_cache/10_cache.ts)**:
+  Build a service with in-memory caching, deduplicated lookups, manual
+  population / invalidation, and dynamic TTL policies.
+- **[Persisting cached values across restarts with PersistedCache](./ai-docs/src/07_cache/20_persisted-cache.ts)**:
+  Build a persisted cache for remote configuration lookups. The cache keeps an
+  in-memory layer for fast reads and a persistence layer for restart-safe data.
+
 ## Effect HttpClient
 
 Build http clients with the `HttpClient` module.
