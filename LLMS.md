@@ -277,12 +277,9 @@ Build http clients with the `HttpClient` module.
 
 ## Working with child processes
 
-Use the `effect/unstable/process` modules to build commands as values, run them
-with a platform `ChildProcessSpawner`, and stream stdout / stderr in Effect.
+Use the `effect/unstable/process` modules to define child processes and run them with `ChildProcessSpawner.
 
-- **[Working with child processes](./ai-docs/src/60_child-process/10_working-with-child-processes.ts)**:
-  Build child-process workflows with typed Effects. This example shows how to
-  collect output, compose pipelines, and stream long-running command output.
+- **[Working with child processes](./ai-docs/src/60_child-process/10_working-with-child-processes.ts)**: This example shows how to collect process output, compose pipelines, and stream long-running command output.
 
 ## Building CLI applications
 
