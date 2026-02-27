@@ -2,6 +2,7 @@ import { Schema, ServiceMap } from "effect"
 import {
   HttpApi,
   HttpApiEndpoint,
+  HttpApiError,
   HttpApiGroup,
   HttpApiMiddleware,
   HttpApiSchema,
@@ -22,6 +23,21 @@ export class UserNotFound extends Schema.TaggedErrorClass<UserNotFound>()("UserN
 export class Unauthorized extends Schema.TaggedErrorClass<Unauthorized>()("Unauthorized", {
   message: Schema.String
 }) {}
+
+export class SearchQueryTooShort extends Schema.TaggedErrorClass<SearchQueryTooShort>()("SearchQueryTooShort", {
+  minimumLength: Schema.Number
+}) {}
+
+const SearchUsersPayload = Schema.Struct({
+  search: Schema.String
+})
+
+const SearchQueryTooShortNoContent = SearchQueryTooShort.pipe(
+  HttpApiSchema.asNoContent({
+    decode: () => new SearchQueryTooShort({ minimumLength: 2 })
+  }),
+  HttpApiSchema.status(422)
+)
 
 export class CurrentUser extends ServiceMap.Service<CurrentUser, {
   readonly id: number
@@ -44,6 +60,18 @@ class UsersApi extends HttpApiGroup.make("users")
         search: Schema.optional(Schema.String)
       },
       success: Schema.Array(User)
+    }),
+    HttpApiEndpoint.post("search", "/search", {
+      payload: [
+        SearchUsersPayload,
+        Schema.String.pipe(HttpApiSchema.asText())
+      ],
+      success: Schema.Array(User),
+      error: [
+        SearchQueryTooShortNoContent,
+        HttpApiError.BadRequestNoContent,
+        HttpApiError.NotFoundNoContent
+      ]
     }),
     HttpApiEndpoint.get("getById", "/:id", {
       params: {

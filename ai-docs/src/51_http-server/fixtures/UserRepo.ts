@@ -23,7 +23,7 @@ export class UserRepo extends ServiceMap.Service<UserRepo, {
       )
       const nextId = yield* Ref.make(2)
 
-      const list = Effect.fnUntraced(function*(search: string | undefined) {
+      const list = Effect.fn(function*(search: string | undefined) {
         const allUsers = Array.from((yield* Ref.get(users)).values())
         if (search === undefined || search.length === 0) {
           return allUsers
@@ -34,7 +34,7 @@ export class UserRepo extends ServiceMap.Service<UserRepo, {
         )
       })
 
-      const getById = Effect.fnUntraced(function*(id: number) {
+      const getById = Effect.fn(function*(id: number) {
         const user = (yield* Ref.get(users)).get(id)
         if (user === undefined) {
           return yield* Effect.fail(new UserNotFound({ id }))
@@ -42,7 +42,7 @@ export class UserRepo extends ServiceMap.Service<UserRepo, {
         return user
       })
 
-      const create = Effect.fnUntraced(function*(input: { readonly name: string; readonly email: string }) {
+      const create = Effect.fn(function*(input: { readonly name: string; readonly email: string }) {
         const id = yield* Ref.get(nextId)
         yield* Ref.update(nextId, (current) => current + 1)
         const user = new User({ id, ...input })

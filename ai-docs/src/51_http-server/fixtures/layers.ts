@@ -1,6 +1,6 @@
 import { Effect, Layer, Redacted } from "effect"
-import { HttpApiBuilder, HttpApiSwagger } from "effect/unstable/httpapi"
-import { Api, Authorization, CurrentUser, Unauthorized } from "./Api.ts"
+import { HttpApiBuilder, HttpApiError, HttpApiSwagger } from "effect/unstable/httpapi"
+import { Api, Authorization, CurrentUser, SearchQueryTooShort, Unauthorized } from "./Api.ts"
 import { UserRepo } from "./UserRepo.ts"
 
 export const AuthorizationLive = Layer.succeed(Authorization)({
@@ -16,11 +16,27 @@ export const AuthorizationLive = Layer.succeed(Authorization)({
 export const UsersApiLive = HttpApiBuilder.group(
   Api,
   "users",
-  Effect.fnUntraced(function*(handlers) {
+  Effect.fn(function*(handlers) {
     const repo = yield* UserRepo
 
     return handlers
       .handle("list", ({ query }) => repo.list(query.search))
+      .handle("search", ({ payload }) => {
+        const search = typeof payload === "string" ? payload : payload.search
+        if (search.length < 2) {
+          return Effect.fail(new SearchQueryTooShort({ minimumLength: 2 }))
+        }
+        if (search === "bad-request") {
+          return Effect.fail(new HttpApiError.BadRequest({}))
+        }
+        return repo.list(search).pipe(
+          Effect.flatMap((users) =>
+            users.length === 0
+              ? Effect.fail(new HttpApiError.NotFound({}))
+              : Effect.succeed(users)
+          )
+        )
+      })
       .handle("getById", ({ params }) => repo.getById(params.id))
       .handle("create", ({ payload }) => repo.create(payload))
       .handle("me", () =>

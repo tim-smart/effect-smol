@@ -24,7 +24,7 @@ export const HttpServerLive = HttpRouter.serve(HttpApiRoutesLive).pipe(
 
 export const AuthorizationClient = HttpApiMiddleware.layerClient(
   Authorization,
-  Effect.fnUntraced(function*({ next, request }) {
+  Effect.fn(function*({ next, request }) {
     return yield* next(HttpClientRequest.bearerToken(request, "dev-token"))
   })
 )
@@ -53,9 +53,19 @@ export const callApi = Effect.gen(function*() {
     }
   })
 
+  const searchWithJson = yield* client.users.search({
+    payload: {
+      search: "ada"
+    }
+  })
+
+  const searchWithText = yield* client.users.search({
+    payload: "admin"
+  })
+
   const me = yield* client.users.me()
 
-  return { created, fetched, me }
+  return { created, fetched, searchWithJson, searchWithText, me }
 }).pipe(
   Effect.provide(FetchHttpClient.layer)
 )
