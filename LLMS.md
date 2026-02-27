@@ -269,14 +269,9 @@ Build http clients with the `HttpClient` module.
 
 ## Building type-safe RPC services
 
-The `effect/unstable/rpc` modules let you define schema-validated remote
-procedures, implement handlers in one place, and derive a typed client from the
-same protocol definition. RPC handlers support both request-response (`Effect`)
-and streaming (`Stream`) workflows.
+The rpc modules let you define schema-validated remote procedures and derive a typed client from the same protocol definition.
 
-- **[Defining and serving RPCs](./ai-docs/src/60_rpc/10_rpc-basics.ts)**:
-  Define request-response and streaming RPCs, implement grouped handlers,
-  expose them over HTTP, and wire a typed client with the HTTP protocol layer.
+- **[Defining and serving RPCs](./ai-docs/src/60_rpc/10_rpc-basics.ts)**: Define request-response and streaming RPCs, serve them and define a client to call them.
 
 ## Building CLI applications
 

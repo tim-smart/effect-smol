@@ -178,6 +178,9 @@ importers:
       '@effect/opentelemetry':
         specifier: workspace:*
         version: link:../packages/opentelemetry
+      '@effect/platform-browser':
+        specifier: workspace:*
+        version: link:../packages/platform-browser
       '@effect/platform-bun':
         specifier: workspace:*
         version: link:../packages/platform-bun

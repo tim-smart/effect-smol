@@ -13,6 +13,7 @@
     "@effect/atom-solid": "workspace:*",
     "@effect/atom-vue": "workspace:*",
     "@effect/opentelemetry": "workspace:*",
+    "@effect/platform-browser": "workspace:*",
     "@effect/platform-bun": "workspace:*",
     "@effect/platform-node": "workspace:*",
     "@effect/sql-clickhouse": "workspace:*",

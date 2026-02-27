@@ -1,124 +1,140 @@
 /**
  * @title Defining and serving RPCs
  *
- * Define request-response and streaming RPCs, implement grouped handlers,
- * expose them over HTTP, and wire a typed client with the HTTP protocol layer.
+ * Define request-response and streaming RPCs, serve them and define a client to call them.
  */
-import { NodeHttpServer } from "@effect/platform-node"
-import { Effect, Layer, Schema, ServiceMap, Stream } from "effect"
+import { BrowserSocket } from "@effect/platform-browser"
+import { NodeHttpServer, NodeRuntime, NodeSocket, NodeSocketServer } from "@effect/platform-node"
+import { Effect, Layer, ServiceMap, Stream } from "effect"
 import { FetchHttpClient, HttpRouter } from "effect/unstable/http"
-import { Rpc, RpcClient, type RpcClientError, RpcGroup, RpcSerialization, RpcServer } from "effect/unstable/rpc"
+import { RpcClient, type RpcClientError, RpcSerialization, RpcServer } from "effect/unstable/rpc"
 import { createServer } from "node:http"
+import { UserId } from "./fixtures/domain/User.ts"
+import { LogRpcsLayer } from "./fixtures/Logs/rpc-handlers.ts"
+import { AllRpcs } from "./fixtures/Rpcs.ts"
+import { UserRpcsLayer } from "./fixtures/Users/rpc-handlers.ts"
 
-const LogLevel = Schema.Union([
-  Schema.Literal("info"),
-  Schema.Literal("warn"),
-  Schema.Literal("error")
-])
+// **Make sure to look at the fixture files** to see how the RPC handlers and RPC
+// groups are defined. The RPC groups are defined in Rpcs.ts, and the handlers
+// are defined in rpc-handlers.ts.
 
-class User extends Schema.Class<User>("User")({
-  id: Schema.String,
-  name: Schema.String
-}) {}
-
-class LogEntry extends Schema.Class<LogEntry>("LogEntry")({
-  level: LogLevel,
-  message: Schema.String,
-  timestamp: Schema.String
-}) {}
-
-class UserNotFound extends Schema.TaggedErrorClass<UserNotFound>()("UserNotFound", {
-  id: Schema.String
-}) {}
-
-class GetUser extends Rpc.make("GetUser", {
-  payload: { id: Schema.String },
-  success: User,
-  error: UserNotFound
-}) {}
-
-class StreamLogs extends Rpc.make("StreamLogs", {
-  payload: {
-    minimumLevel: LogLevel
-  },
-  success: LogEntry,
-  stream: true
-}) {}
-
-export const AppRpcs = RpcGroup.make(GetUser, StreamLogs)
-
-const users = new Map<string, User>([
-  ["1", new User({ id: "1", name: "Ada" })],
-  ["2", new User({ id: "2", name: "Lin" })]
-])
-
-const logs: ReadonlyArray<LogEntry> = [
-  new LogEntry({ level: "info", message: "Worker booted", timestamp: "2026-01-10T12:00:00.000Z" }),
-  new LogEntry({ level: "warn", message: "Queue depth is high", timestamp: "2026-01-10T12:00:03.000Z" }),
-  new LogEntry({ level: "error", message: "Job 92 failed", timestamp: "2026-01-10T12:00:05.000Z" })
-]
-
-const levelToSeverity = {
-  info: 0,
-  warn: 1,
-  error: 2
-} as const
-
-// Group handlers in one layer so the RPC protocol and the implementation stay
-// in sync.
-export const AppRpcsLive = AppRpcs.toLayer(Effect.succeed(AppRpcs.of({
-  // Request-response RPC handlers return Effect values.
-  GetUser: Effect.fnUntraced(function*({ id }) {
-    return yield* Effect.fromNullishOr(users.get(id)).pipe(
-      Effect.mapError(() => new UserNotFound({ id }))
-    )
-  }),
-  // Streaming RPC handlers return Stream values.
-  StreamLogs: ({ minimumLevel }) =>
-    Stream.fromIterable(logs).pipe(
-      Stream.filter((entry) => levelToSeverity[entry.level] >= levelToSeverity[minimumLevel])
-    )
-})))
-
-// `RpcServer.layerHttp` mounts the RPC protocol into the HttpRouter.
-const RpcHttpLayer = RpcServer.layerHttp({
-  group: AppRpcs,
-  path: "/rpc",
-  protocol: "http"
-}).pipe(
-  Layer.provide(AppRpcsLive)
+// You can serve a RpcServer over a raw TCP socket
+export const RpcSocketLayer = RpcServer.layer(AllRpcs).pipe(
+  // Provide all the RPC handler layers
+  Layer.provide([
+    UserRpcsLayer,
+    LogRpcsLayer
+  ]),
+  // Provide the Socket protocol
+  Layer.provide(RpcServer.layerProtocolSocketServer),
+  // Provide the desired serialization format for the RPC protocol. This must
+  // match the format used by the client(s)
+  Layer.provide(RpcSerialization.layerMsgPack),
+  // Provide the SockerServer implementation to use
+  Layer.provide(NodeSocketServer.layer({ port: 3001 }))
 )
 
-export const RpcServerLive = HttpRouter.serve(RpcHttpLayer, {
-  disableLogger: true,
-  disableListenLog: true
+// Or if you want to serve over HTTP, you can mount the RpcServer into an
+// HttpRouter.
+const RpcHttpLayer = RpcServer.layerHttp({
+  group: AllRpcs,
+  path: "/rpc",
+  protocol: "websocket"
 }).pipe(
-  Layer.provide(NodeHttpServer.layer(createServer, { port: 3000 })),
+  // Provide all the RPC handler layers
+  Layer.provide([
+    UserRpcsLayer,
+    LogRpcsLayer
+  ]),
+  // Provide the desired serialization format for the RPC protocol. This must
+  // match the format used by the client(s)
   Layer.provide(RpcSerialization.layerNdjson)
 )
 
-export class AppClient extends ServiceMap.Service<
-  AppClient,
-  RpcClient.FromGroup<typeof AppRpcs, RpcClientError.RpcClientError>
->()(
-  "ai-docs/rpc/AppClient"
-) {
-  // `RpcClient.make` needs `RpcClient.Protocol` in context.
-  // `layerProtocolHttp` supplies that protocol over HTTP.
-  static readonly layer = Layer.effect(AppClient)(RpcClient.make(AppRpcs)).pipe(
-    Layer.provide(RpcClient.layerProtocolHttp({ url: "http://localhost:3000/rpc" })),
-    Layer.provide(FetchHttpClient.layer),
+export const HttpLayer = HttpRouter.serve(RpcHttpLayer).pipe(
+  Layer.provide(NodeHttpServer.layer(createServer, { port: 3000 }))
+)
+
+// Run the server layers using Layer.launch
+Layer.mergeAll(RpcSocketLayer, HttpLayer).pipe(
+  Layer.launch,
+  NodeRuntime.runMain
+)
+
+export class RpcClientWebsocket extends ServiceMap.Service<
+  RpcClientWebsocket,
+  RpcClient.FromGroup<typeof AllRpcs, RpcClientError.RpcClientError>
+>()("acme/RpcClientWebsocket") {
+  // Create a client layer that can be used to access the RPC server. This must
+  // match the protocol and serialization layers used by the server.
+  static readonly layer = Layer.effect(RpcClientWebsocket, RpcClient.make(AllRpcs)).pipe(
+    // Websocket protocol needs to use RpcClient.layerProtocolSocket
+    // You can configure the protocol layer with options, such as retrying
+    // transient errors.
+    Layer.provide(
+      RpcClient.layerProtocolSocket({ retryTransientErrors: true }).pipe(
+        // Provide the Socket implementation to use for the protocol layer.
+        // In this case, we want to connect to the server over a WebSocket, so we
+        // use the Socket.layerWebSocket implementation, and provide the URL of
+        // the server.
+        Layer.provide(BrowserSocket.layerWebSocket("ws://localhost:3000/rpc")),
+        // On node.js, you would use NodeSocket instead of BrowserSocket.
+        Layer.provide(NodeSocket.layerWebSocket("ws://localhost:3000/rpc"))
+      )
+    ),
+    // Provide the matching serialization layer for the server.
     Layer.provide(RpcSerialization.layerNdjson)
   )
 }
 
-export const program = Effect.gen(function*() {
-  const client = yield* AppClient
+export class RpcClientHttp extends ServiceMap.Service<
+  RpcClientHttp,
+  RpcClient.FromGroup<typeof AllRpcs, RpcClientError.RpcClientError>
+>()("acme/RpcClientHttp") {
+  // If your server is using the "http" protocol, you would use the
+  // RpcClient.layerProtocolHttp layer.
+  static readonly layer = Layer.effect(RpcClientHttp, RpcClient.make(AllRpcs)).pipe(
+    Layer.provide(
+      RpcClient.layerProtocolHttp({ url: "http://localhost:3000/rpc" }).pipe(
+        // Provide the HttpClient to use
+        Layer.provide(FetchHttpClient.layer)
+      )
+    ),
+    // Provide the matching serialization layer for the server.
+    Layer.provide(RpcSerialization.layerNdjson)
+  )
+}
 
-  const user = yield* client.GetUser({ id: "1" })
-  const recentIssues = yield* client.StreamLogs({ minimumLevel: "warn" }).pipe(
+export class RpcClientSocket extends ServiceMap.Service<
+  RpcClientSocket,
+  RpcClient.FromGroup<typeof AllRpcs, RpcClientError.RpcClientError>
+>()("acme/RpcClientSocket") {
+  // If your server is using raw sockets, you would use the
+  // RpcClient.layerProtocolSocket layer, and provide the net Socket
+  // implementation.
+  static readonly layer = Layer.effect(RpcClientHttp, RpcClient.make(AllRpcs)).pipe(
+    Layer.provide(
+      RpcClient.layerProtocolSocket({ retryTransientErrors: true }).pipe(
+        // Provide a net Socket that connects to the server. You can configure
+        // the Socket with options.
+        Layer.provide(NodeSocket.layerNet({ host: "localhost", port: 3001 }))
+      )
+    ),
+    // Provide the matching serialization layer for the server.
+    Layer.provide(RpcSerialization.layerMsgPack)
+  )
+}
+
+// Example usage of an RpcClient
+export const program = Effect.gen(function*() {
+  const client = yield* RpcClientWebsocket
+
+  const user = yield* client["users.get"]({ id: UserId.makeUnsafe("1") })
+  const recentIssues = yield* client["logs.stream"]({ minimumLevel: "Warn" }).pipe(
     Stream.runCollect
   )
 
   return { user, recentIssues }
-})
+}).pipe(
+  Effect.provide(RpcClientWebsocket.layer)
+)
