@@ -5,71 +5,108 @@
  * middleware, serve it over HTTP, and call it using a generated typed client.
  */
 import { NodeHttpServer, NodeRuntime } from "@effect/platform-node"
-import { Effect, Layer } from "effect"
-import { FetchHttpClient, HttpClientRequest, HttpRouter } from "effect/unstable/http"
-import { HttpApiClient, HttpApiMiddleware } from "effect/unstable/httpapi"
+import { Effect, flow, Layer, Schedule, ServiceMap } from "effect"
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpRouter, HttpServer } from "effect/unstable/http"
+import { HttpApiBuilder, HttpApiClient, HttpApiMiddleware, HttpApiScalar } from "effect/unstable/httpapi"
 import { createServer } from "node:http"
-import { Api, Authorization } from "./fixtures/Api.ts"
-import { HttpApiRoutesLive } from "./fixtures/layers.ts"
+import { Api } from "./fixtures/Api.ts"
+import { Authorization } from "./fixtures/HttpApi/Authorization.ts"
+import { UsersApiHandlers } from "./fixtures/Users/http.ts"
 
 // This walkthrough focuses on runtime wiring and typed client usage.
 // See the fixture files for the API schemas, endpoint definitions and handlers:
-// - ./fixtures/Api.ts
-// - ./fixtures/UserRepo.ts
-// - ./fixtures/layers.ts
 
-export const HttpServerLive = HttpRouter.serve(HttpApiRoutesLive).pipe(
+const SystemApiHandlers = HttpApiBuilder.group(
+  Api,
+  "system",
+  Effect.fn(function*(handlers) {
+    return handlers.handle("health", () => Effect.void)
+  })
+)
+
+const ApiRoutes = HttpApiBuilder.layer(Api, {
+  openapiPath: "/openapi.json"
+}).pipe(
+  // Provide all the handler Layers for the API.
+  Layer.provide([UsersApiHandlers, SystemApiHandlers])
+)
+
+// Define a /docs route that serves scalar documentation
+const DocsRoute = HttpApiScalar.layer(Api, {
+  path: "/docs"
+})
+
+// Merge all the http routes together
+const AllRoutes = Layer.mergeAll(ApiRoutes, DocsRoute)
+
+// Create an HTTP server Layer that serves the API routes.
+//
+// Here we are using the NodeHttpServer, but you could also use the
+// BunHttpServer
+export const HttpServerLayer = HttpRouter.serve(AllRoutes).pipe(
   Layer.provide(NodeHttpServer.layer(createServer, { port: 3000 }))
 )
+
+// Then run the server using Layer.launch
+Layer.launch(HttpServerLayer).pipe(
+  NodeRuntime.runMain
+)
+
+// Or create a web handler, which can be used in serverless environments
+export const { handler, dispose } = HttpRouter.toWebHandler(AllRoutes.pipe(
+  Layer.provide(HttpServer.layerServices)
+))
+
+// -----------------
+// Client side setup
+// -----------------
 
 export const AuthorizationClient = HttpApiMiddleware.layerClient(
   Authorization,
   Effect.fn(function*({ next, request }) {
+    // Here you can modify the request and pass it down the middleware chain.
+    // This is where you would add authentication tokens, custom headers, etc.
+    // For this example, we just add a hardcoded bearer token to all requests.
     return yield* next(HttpClientRequest.bearerToken(request, "dev-token"))
   })
 )
 
+// Define the HttpApiClient service, which will be used to make requests to the
+// API.
+export class ApiClient extends ServiceMap.Service<ApiClient, HttpApiClient.ForApi<typeof Api>>()("acme/ApiClient") {
+  static readonly layer = Layer.effect(
+    ApiClient,
+    HttpApiClient.make(Api, {
+      // Use transformClient to apply middleware to the generated client. This
+      // is useful for settings the base url and applying retry policies.
+      transformClient: (client) =>
+        client.pipe(
+          HttpClient.mapRequest(flow(
+            HttpClientRequest.prependUrl("http://localhost:3000")
+          )),
+          HttpClient.retryTransient({
+            schedule: Schedule.exponential(100),
+            times: 3
+          })
+        )
+    })
+  ).pipe(
+    // Provide the client implementation of the Authorization middleware, which
+    // is required.
+    Layer.provide(AuthorizationClient),
+    // Supply a HttpClient implementation to use for making requests. Here we
+    // use the FetchHttpClient, but you could also use the NodeHttpClient or
+    // BunHttpClient.
+    Layer.provide(FetchHttpClient.layer)
+  )
+}
+
 // The generated client mirrors your API definition, so renames and schema
 // changes are checked end-to-end at compile time.
 export const callApi = Effect.gen(function*() {
-  const client = yield* HttpApiClient.make(Api, {
-    baseUrl: "http://localhost:3000"
-  }).pipe(
-    Effect.provide(AuthorizationClient)
-  )
+  const client = yield* ApiClient
 
   yield* client.health()
-
-  const created = yield* client.users.create({
-    payload: {
-      name: "Ada Lovelace",
-      email: "ada@acme.dev"
-    }
-  })
-
-  const fetched = yield* client.users.getById({
-    params: {
-      id: created.id
-    }
-  })
-
-  const searchWithJson = yield* client.users.search({
-    payload: {
-      search: "ada"
-    }
-  })
-
-  const searchWithText = yield* client.users.search({
-    payload: "admin"
-  })
-
-  const me = yield* client.users.me()
-
-  return { created, fetched, searchWithJson, searchWithText, me }
 }).pipe(
-  Effect.provide(FetchHttpClient.layer)
-)
-
-Layer.launch(HttpServerLive).pipe(
-  NodeRuntime.runMain
+  Effect.provide(ApiClient.layer)
 )
