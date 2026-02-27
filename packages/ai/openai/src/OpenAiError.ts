@@ -57,51 +57,67 @@ export type OpenAiRateLimitMetadata = OpenAiErrorMetadata & {
 }
 
 declare module "effect/unstable/ai/AiError" {
+  export interface RateLimitErrorMetadata extends ProviderMetadata {
+    readonly openai?: OpenAiRateLimitMetadata | null
+  }
+
   export interface RateLimitError {
-    readonly metadata: {
-      readonly openai?: OpenAiRateLimitMetadata | null
-    }
+    readonly metadata: RateLimitErrorMetadata
+  }
+
+  export interface QuotaExhaustedErrorMetadata extends ProviderMetadata {
+    readonly openai?: OpenAiErrorMetadata | null
   }
 
   export interface QuotaExhaustedError {
-    readonly metadata: {
-      readonly openai?: OpenAiErrorMetadata | null
-    }
+    readonly metadata: QuotaExhaustedErrorMetadata
+  }
+
+  export interface AuthenticationErrorMetadata extends ProviderMetadata {
+    readonly openai?: OpenAiErrorMetadata | null
   }
 
   export interface AuthenticationError {
-    readonly metadata: {
-      readonly openai?: OpenAiErrorMetadata | null
-    }
+    readonly metadata: AuthenticationErrorMetadata
+  }
+
+  export interface ContentPolicyErrorMetadata extends ProviderMetadata {
+    readonly openai?: OpenAiErrorMetadata | null
   }
 
   export interface ContentPolicyError {
-    readonly metadata: {
-      readonly openai?: OpenAiErrorMetadata | null
-    }
+    readonly metadata: ContentPolicyErrorMetadata
+  }
+
+  export interface InvalidRequestErrorMetadata extends ProviderMetadata {
+    readonly openai?: OpenAiErrorMetadata | null
   }
 
   export interface InvalidRequestError {
-    readonly metadata: {
-      readonly openai?: OpenAiErrorMetadata | null
-    }
+    readonly metadata: InvalidRequestErrorMetadata
+  }
+
+  export interface InternalProviderErrorMetadata extends ProviderMetadata {
+    readonly openai?: OpenAiErrorMetadata | null
   }
 
   export interface InternalProviderError {
-    readonly metadata: {
-      readonly openai?: OpenAiErrorMetadata | null
-    }
+    readonly metadata: InternalProviderErrorMetadata
+  }
+
+  export interface InvalidOutputErrorMetadata extends ProviderMetadata {
+    readonly openai?: OpenAiErrorMetadata | null
   }
 
   export interface InvalidOutputError {
-    readonly metadata: {
-      readonly openai?: OpenAiErrorMetadata | null
-    }
+    readonly metadata: InvalidOutputErrorMetadata
+  }
+
+  export interface UnknownErrorMetadata extends ProviderMetadata {
+    readonly openai?: OpenAiErrorMetadata | null
   }
 
   export interface UnknownError {
-    readonly metadata: {
-      readonly openai?: OpenAiErrorMetadata | null
-    }
+    readonly metadata: UnknownErrorMetadata
   }
 }

@@ -61,51 +61,67 @@ export type AnthropicRateLimitMetadata = AnthropicErrorMetadata & {
 }
 
 declare module "effect/unstable/ai/AiError" {
+  export interface RateLimitErrorMetadata extends ProviderMetadata {
+    readonly anthropic?: AnthropicRateLimitMetadata | null
+  }
+
   export interface RateLimitError {
-    readonly metadata: {
-      readonly anthropic?: AnthropicRateLimitMetadata | null
-    }
+    readonly metadata: RateLimitErrorMetadata
+  }
+
+  export interface QuotaExhaustedErrorMetadata extends ProviderMetadata {
+    readonly anthropic?: AnthropicErrorMetadata | null
   }
 
   export interface QuotaExhaustedError {
-    readonly metadata: {
-      readonly anthropic?: AnthropicErrorMetadata | null
-    }
+    readonly metadata: QuotaExhaustedErrorMetadata
+  }
+
+  export interface AuthenticationErrorMetadata extends ProviderMetadata {
+    readonly anthropic?: AnthropicErrorMetadata | null
   }
 
   export interface AuthenticationError {
-    readonly metadata: {
-      readonly anthropic?: AnthropicErrorMetadata | null
-    }
+    readonly metadata: AuthenticationErrorMetadata
+  }
+
+  export interface ContentPolicyErrorMetadata extends ProviderMetadata {
+    readonly anthropic?: AnthropicErrorMetadata | null
   }
 
   export interface ContentPolicyError {
-    readonly metadata: {
-      readonly anthropic?: AnthropicErrorMetadata | null
-    }
+    readonly metadata: ContentPolicyErrorMetadata
+  }
+
+  export interface InvalidRequestErrorMetadata extends ProviderMetadata {
+    readonly anthropic?: AnthropicErrorMetadata | null
   }
 
   export interface InvalidRequestError {
-    readonly metadata: {
-      readonly anthropic?: AnthropicErrorMetadata | null
-    }
+    readonly metadata: InvalidRequestErrorMetadata
+  }
+
+  export interface InternalProviderErrorMetadata extends ProviderMetadata {
+    readonly anthropic?: AnthropicErrorMetadata | null
   }
 
   export interface InternalProviderError {
-    readonly metadata: {
-      readonly anthropic?: AnthropicErrorMetadata | null
-    }
+    readonly metadata: InternalProviderErrorMetadata
+  }
+
+  export interface InvalidOutputErrorMetadata extends ProviderMetadata {
+    readonly anthropic?: AnthropicErrorMetadata | null
   }
 
   export interface InvalidOutputError {
-    readonly metadata: {
-      readonly anthropic?: AnthropicErrorMetadata | null
-    }
+    readonly metadata: InvalidOutputErrorMetadata
+  }
+
+  export interface UnknownErrorMetadata extends ProviderMetadata {
+    readonly anthropic?: AnthropicErrorMetadata | null
   }
 
   export interface UnknownError {
-    readonly metadata: {
-      readonly anthropic?: AnthropicErrorMetadata | null
-    }
+    readonly metadata: UnknownErrorMetadata
   }
 }
