@@ -313,9 +313,8 @@ responses.
   Define tools with schemas, group them into toolkits, implement handlers,
   and pass them to `LanguageModel.generateText`.
 - **[Stateful chat sessions](./ai-docs/src/71_ai/30_chat.ts)**:
-  `Chat` maintains conversation history automatically. Each call to
-  `generateText` appends the user message and model response to an internal
-  `Ref`, so follow-up prompts carry full context.
+  The AI `Chat` module maintains conversation history automatically. Build
+  AI agents or chat assistants.
 
 ## Building distributed applications with cluster
 

@@ -1,17 +1,16 @@
 /**
  * @title Stateful chat sessions
  *
- * `Chat` maintains conversation history automatically. Each call to
- * `generateText` appends the user message and model response to an internal
- * `Ref`, so follow-up prompts carry full context.
+ * The AI `Chat` module maintains conversation history automatically. Build
+ * AI agents or chat assistants.
  */
 import { OpenAiClient, OpenAiLanguageModel } from "@effect/ai-openai"
-import { Config, Effect, Layer, Ref, Schema, ServiceMap } from "effect"
-import { AiError, Chat } from "effect/unstable/ai"
+import { Config, DateTime, Effect, Layer, Ref, Schema, ServiceMap } from "effect"
+import { AiError, Chat, Prompt, Tool, Toolkit } from "effect/unstable/ai"
 import { FetchHttpClient } from "effect/unstable/http"
 
 // ---------------------------------------------------------------------------
-// Provider setup (reuse the pattern from the LanguageModel example)
+// Provider setup
 // ---------------------------------------------------------------------------
 
 const OpenAiClientLayer = OpenAiClient.layerConfig({
@@ -19,55 +18,76 @@ const OpenAiClientLayer = OpenAiClient.layerConfig({
 }).pipe(Layer.provide(FetchHttpClient.layer))
 
 // ---------------------------------------------------------------------------
+// Tools for the agentic loop
+// ---------------------------------------------------------------------------
+
+const Tools = Toolkit.make(Tool.make("getCurrentTime", {
+  description: "Get the current time in ISO format",
+  parameters: Schema.Struct({
+    id: Schema.String
+  }),
+  success: Schema.String
+}))
+
+const ToolsLayer = Tools.toLayer(Effect.gen(function*() {
+  yield* Effect.logDebug("Initializing tools...")
+  return Tools.of({
+    getCurrentTime: Effect.fn("Tools.getCurrentTime")(function*(_) {
+      const now = yield* DateTime.now
+      return DateTime.formatIso(now)
+    })
+  })
+}))
+
+// ---------------------------------------------------------------------------
 // Service that wraps Chat for a domain use-case
 // ---------------------------------------------------------------------------
 
-export class AiWriterError extends Schema.TaggedErrorClass<AiWriterError>()("AiWriterError", {
+export class AiAssistantError extends Schema.TaggedErrorClass<AiAssistantError>()("AiAssistantError", {
   reason: AiError.AiErrorReason
 }) {
   static fromAiError(error: AiError.AiError) {
-    return new AiWriterError({ reason: error.reason })
+    return new AiAssistantError({ reason: error.reason })
   }
 }
 
 export class AiAssistant extends ServiceMap.Service<AiAssistant, {
-  // Start a new conversation, ask a question, then ask a follow-up that
-  // relies on the previous context.
-  chat(messages: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<string>, AiWriterError>
-  // Initialize a chat with a system prompt, then ask a question.
-  chatWithSystem(
-    system: string,
-    question: string
-  ): Effect.Effect<string, AiWriterError>
-  // Demonstrate serializing and restoring a chat session.
-  roundTrip(
-    question: string
-  ): Effect.Effect<string, AiWriterError | Schema.SchemaError>
+  // Send a message while maintaining conversation history across turns.
+  chat(message: string): Effect.Effect<string, AiAssistantError>
+  // Ask a question and use an agentic loop with tool calls to answer it.
+  agent(question: string): Effect.Effect<string, AiAssistantError>
 }>()("docs/AiAssistant") {
   static readonly layer = Layer.effect(
     AiAssistant,
     Effect.gen(function*() {
-      // Resolve the model layer inside the service constructor. This makes
-      // the `LanguageModel` available to every method without leaking the
-      // provider-specific `OpenAiClient` requirement into their signatures.
-      const modelLayer = yield* OpenAiLanguageModel.model("gpt-4.1")
+      // Choose the model you want to use for the chat sessions.
+      const modelLayer = yield* OpenAiLanguageModel.model("gpt-5.2")
 
       // ---------------------------------------------------------------------------
       // 1. Chat.empty — basic multi-turn conversation
       // ---------------------------------------------------------------------------
 
-      // `Chat.empty` creates a fresh chat backed by an internal `Ref<Prompt>`.
-      // Every call to `generateText` appends the user message and the model
-      // response, so later prompts automatically include full history.
-      const chat = Effect.fn("AiAssistant.chat")(
-        function*(messages: ReadonlyArray<string>) {
-          const session = yield* Chat.empty
+      // Create a new chat session with `Chat.empty` or `Chat.fromPrompt`. The
+      // session maintains conversation history automatically, so you can focus on
+      // the current turn without having to manage context.
+      const newSession = yield* Chat.fromPrompt(Prompt.empty.pipe(
+        Prompt.setSystem("You are a helpful assistant that answers questions.")
+      ))
 
-          const responses: Array<string> = []
-          for (const message of messages) {
-            const response = yield* session.generateText({ prompt: message })
-            responses.push(response.text)
-          }
+      // You can also create a chat using a json export.
+      const json = yield* newSession.exportJson
+      const session = yield* Chat.fromJson(json)
+
+      const chat = Effect.fn("AiAssistant.chat")(
+        function*(message: string) {
+          // Create a new turn in the conversation by passing the user's message
+          // to `session.generateText`.
+          const response = yield* session.generateText({ prompt: message }).pipe(
+            // Provide the model layer to use.
+            // You could potentially use different models for different turns,
+            // or even switch models in the middle of a conversation.
+            Effect.provide(modelLayer)
+          )
 
           // You can inspect the accumulated history at any point through the
           // `history` ref on the chat instance.
@@ -76,101 +96,63 @@ export class AiAssistant extends ServiceMap.Service<AiAssistant, {
             `Conversation has ${history.content.length} messages`
           )
 
-          return responses
+          return response.text
         },
-        Effect.provide(modelLayer),
-        Effect.mapError((error) => AiWriterError.fromAiError(error))
+        Effect.mapError((error) => AiAssistantError.fromAiError(error))
       )
 
       // ---------------------------------------------------------------------------
-      // 2. Chat.fromPrompt — initialize with a system message
+      // 2. Create agentic loops with tools
       // ---------------------------------------------------------------------------
 
-      // `Chat.fromPrompt` accepts any `Prompt.RawInput`: a plain string (user
-      // message), an array of encoded messages, or an existing `Prompt`. Passing
-      // an array with a system message sets the tone for the entire conversation.
-      const chatWithSystem = Effect.fn("AiAssistant.chatWithSystem")(
-        function*(system: string, question: string) {
+      const tools = yield* Tools
+      const agent = Effect.fn("AiAssistant.agent")(
+        function*(question: string) {
+          // We start the agent with a system prompt and the user question. The
+          // agent can then call tools in a loop until it decides to return a
+          // final answer.
           const session = yield* Chat.fromPrompt([
-            { role: "system", content: system }
+            { role: "system", content: "You are an assistant that can use tools to answer questions." },
+            { role: "user", content: question }
           ])
 
-          const response = yield* session.generateText({ prompt: question })
-          return response.text
+          while (true) {
+            const response = yield* session.generateText({
+              prompt: [], // No additional prompt — the model has full access to the conversation history
+              toolkit: tools // Provide the tools to the model
+            }).pipe(
+              // Provide the model layer to use.
+              // You could potentially use different models for different turns,
+              // or even switch models in the middle of a conversation.
+              Effect.provide(modelLayer)
+            )
+            if (response.toolCalls.length > 0) {
+              // If the model called any tools, execute them and the Chat module
+              // will automatically add the tool results to the conversation
+              // history before the next turn.
+              continue
+            }
+            // If there are no tool calls, the model has returned a final answer
+            // and we can exit the loop.
+            return response.text
+          }
         },
-        Effect.provide(modelLayer),
-        Effect.mapError((error) => AiWriterError.fromAiError(error))
-      )
-
-      // ---------------------------------------------------------------------------
-      // 3. Export / import lifecycle
-      // ---------------------------------------------------------------------------
-
-      // `chat.exportJson` serializes the full conversation history to a JSON
-      // string. `Chat.fromJson` restores a chat from that string so you can
-      // persist sessions across process restarts.
-      const roundTrip = Effect.fn("AiAssistant.roundTrip")(
-        function*(question: string) {
-          // Start a conversation and generate one response
-          const original = yield* Chat.empty
-          yield* original.generateText({ prompt: question })
-
-          // Serialize the entire conversation to JSON
-          const json = yield* original.exportJson
-
-          // Restore the session from the serialized JSON
-          const restored = yield* Chat.fromJson(json)
-
-          // The restored chat has the same history as the original, so the
-          // model receives the full prior context.
-          const response = yield* restored.generateText({
-            prompt: "Summarize what we discussed so far."
-          })
-
-          return response.text
-        },
-        Effect.provide(modelLayer),
-        Effect.mapError(
-          (error) =>
-            error._tag === "AiError"
-              ? AiWriterError.fromAiError(error)
-              : error
+        // Remap AI errors to our domain-specific error type, but die on
+        // unexpected errors.
+        Effect.catchTag(
+          "AiError",
+          (error) => Effect.fail(AiAssistantError.fromAiError(error)),
+          (e) => Effect.die(e)
         )
       )
 
       return AiAssistant.of({
         chat,
-        chatWithSystem,
-        roundTrip
+        agent
       })
     })
-  ).pipe(Layer.provide(OpenAiClientLayer))
-}
-
-// ---------------------------------------------------------------------------
-// Example program
-// ---------------------------------------------------------------------------
-
-export const program: Effect.Effect<
-  void,
-  AiWriterError | Schema.SchemaError,
-  AiAssistant
-> = Effect.gen(function*() {
-  const assistant = yield* AiAssistant
-
-  // Multi-turn: the second message automatically includes context from the
-  // first thanks to Chat's internal history.
-  yield* assistant.chat([
-    "What are the main benefits of functional programming?",
-    "Can you give a concrete example of the first benefit you mentioned?"
-  ])
-
-  // System prompt sets the conversation persona before the user message.
-  yield* assistant.chatWithSystem(
-    "You are a concise technical writer. Keep answers under 50 words.",
-    "Explain dependency injection."
+  ).pipe(
+    // Provide the OpenAI client and tools layers to the AiAssistant service.
+    Layer.provide([OpenAiClientLayer, ToolsLayer])
   )
-
-  // Round-trip: export a chat to JSON then restore and continue the session.
-  yield* assistant.roundTrip("What is the Effect library?")
-})
+}
