@@ -2,11 +2,10 @@
  * @title Defining and using AI tools
  *
  * Define tools with schemas, group them into toolkits, implement handlers,
- * pass them to `LanguageModel.generateText`, and inspect tool calls and
- * results. Also covers provider-defined tools like OpenAI web search.
+ * and pass them to `LanguageModel.generateText`.
  */
 import { OpenAiClient, OpenAiLanguageModel, OpenAiTool } from "@effect/ai-openai"
-import { Config, Effect, Layer, Schema, ServiceMap, Stream } from "effect"
+import { Config, Effect, Layer, Schema, ServiceMap } from "effect"
 import { AiError, LanguageModel, Tool, Toolkit } from "effect/unstable/ai"
 import { FetchHttpClient } from "effect/unstable/http"
 
@@ -14,31 +13,50 @@ import { FetchHttpClient } from "effect/unstable/http"
 // 1. Defining tools
 // ---------------------------------------------------------------------------
 
+const ProductId = Schema.String.pipe(Schema.brand("ProductId")).annotate({
+  description: "A unique identifier for a product, e.g. 'p-123'"
+})
+
+class Product extends Schema.Class<Product>("acme/domain/Product")({
+  id: ProductId,
+  name: Schema.String,
+  price: Schema.Number
+}) {}
+
 // Each tool has a name, an optional description, a parameters schema that the
 // model fills in, and a success schema for the handler result. The description
 // is shown to the model to help it decide when to call the tool.
 const SearchProducts = Tool.make("SearchProducts", {
   description: "Search the product catalog by keyword",
   parameters: Schema.Struct({
-    query: Schema.String,
-    maxResults: Schema.Number.pipe(Schema.withDecodingDefault(() => 10))
-  }),
-  success: Schema.Array(
-    Schema.Struct({
-      id: Schema.String,
-      name: Schema.String,
-      price: Schema.Number
+    query: Schema.String.annotate({
+      // Add a description to individual parameters for even better model
+      // guidance.
+      description: "The search query, e.g. 'wireless headphones'"
+    }),
+    maxResults: Schema.Number.pipe(Schema.withDecodingDefault(() => 10)).annotate({
+      description: "The maximum number of results to return"
     })
-  )
+  }),
+  success: Schema.Array(Product),
+  // The strategy used for handling errors returned from tool call handler
+  // execution.
+  //
+  // If set to `"error"` (the default), errors that occur during tool call handler
+  // execution will be returned in the error channel of the calling effect.
+  //
+  // If set to `"return"`, errors that occur during tool call handler execution
+  // will be captured and returned as part of the tool call result.
+  failureMode: "error"
 })
 
 const GetInventory = Tool.make("GetInventory", {
   description: "Check current stock level for a product",
   parameters: Schema.Struct({
-    productId: Schema.String
+    productId: ProductId
   }),
   success: Schema.Struct({
-    productId: Schema.String,
+    productId: ProductId,
     available: Schema.Number
   })
 })
@@ -58,22 +76,31 @@ const ProductToolkit = Toolkit.make(SearchProducts, GetInventory)
 // `toLayer` returns a `Layer` that satisfies the handler requirements for every
 // tool in the toolkit. Each handler receives the decoded parameters and returns
 // an Effect producing the success type.
-const ProductToolkitLive = ProductToolkit.toLayer({
-  SearchProducts: ({ query, maxResults }) =>
-    // In a real application, this would query a database or search index.
-    Effect.succeed([
-      { id: "p-1", name: `${query} widget`, price: 19.99 },
-      { id: "p-2", name: `${query} gadget`, price: 29.99 }
-    ].slice(0, maxResults)),
-  GetInventory: ({ productId }) => Effect.succeed({ productId, available: 42 })
-})
+const ProductToolkitLayer = ProductToolkit.toLayer(Effect.gen(function*() {
+  yield* Effect.log("Initializing ProductToolkitLive")
+  // Here you could access other services or resources needed to implement the
+  // handlers, e.g. a database client or external API client.
+  //
+  // const client = yield* SomeDatabaseClient
+  return ProductToolkit.of({
+    SearchProducts: Effect.fn("ProductToolkit.SearchProducts")(function*({ query, maxResults }) {
+      return [
+        new Product({ id: ProductId.makeUnsafe("p-1"), name: `${query} widget`, price: 19.99 }),
+        new Product({ id: ProductId.makeUnsafe("p-2"), name: `${query} gadget`, price: 29.99 })
+      ].slice(0, maxResults)
+    }),
+    GetInventory: Effect.fn("ProductToolkit.GetInventory")(function*({ productId }) {
+      return { productId, available: 42 }
+    })
+  })
+}))
 
 // ---------------------------------------------------------------------------
 // 4. Using tools with LanguageModel
 // ---------------------------------------------------------------------------
 
 // Provider setup (same pattern as the language-model example).
-const OpenAiClientLive = OpenAiClient.layerConfig({
+const OpenAiClientLayer = OpenAiClient.layerConfig({
   apiKey: Config.redacted("OPENAI_API_KEY")
 }).pipe(Layer.provide(FetchHttpClient.layer))
 
@@ -82,7 +109,7 @@ export class ProductAssistantError extends Schema.TaggedErrorClass<ProductAssist
   { reason: AiError.AiErrorReason }
 ) {}
 
-// Wrap tool-enabled generation in a service to follow best practices.
+// Wrap tool-enabled generation in a service
 export class ProductAssistant extends ServiceMap.Service<ProductAssistant, {
   answer(question: string): Effect.Effect<{
     readonly text: string
@@ -92,19 +119,25 @@ export class ProductAssistant extends ServiceMap.Service<ProductAssistant, {
   static readonly layer = Layer.effect(
     ProductAssistant,
     Effect.gen(function*() {
-      // Resolve the LanguageModel and toolkit handlers at layer construction
-      // time, so they are captured in the closure below.
-      const model = yield* LanguageModel.LanguageModel
+      // Access the toolkit's handlers by yielding the toolkit definition.
       const toolkit = yield* ProductToolkit
+
+      // Choose a model to use
+      const model = yield* OpenAiLanguageModel.model("gpt-5.2")
 
       const answer = Effect.fn("ProductAssistant.answer")(
         function*(question: string) {
           // Pass the toolkit to `generateText`. The model can call any tool in
           // the toolkit; the framework resolves parameters, invokes handlers,
           // and feeds results back automatically.
-          const response = yield* model.generateText({
+          const response = yield* LanguageModel.generateText({
             prompt: question,
-            toolkit
+            toolkit,
+            // You can set `toolChoice` to "required" to force the model to call
+            // a tool before responding with text.
+            //
+            // By default it is set to "auto"
+            toolChoice: "required"
           })
 
           // -------------------------------------------------------------------
@@ -130,11 +163,20 @@ export class ProductAssistant extends ServiceMap.Service<ProductAssistant, {
             toolCallCount: response.toolCalls.length
           }
         },
+        // Provide the chosen model to use
+        Effect.provide(model),
+        (_) => _,
         // Map AI errors into our domain error type
-        Effect.mapError((error) =>
-          new ProductAssistantError({
-            reason: error instanceof AiError.AiError ? error.reason : error
-          })
+        Effect.catchTag(
+          "AiError",
+          (error) =>
+            Effect.fail(
+              new ProductAssistantError({
+                reason: error.reason
+              })
+            ),
+          // For unexpected errors, die with the original error
+          (e) => Effect.die(e)
         )
       )
 
@@ -143,7 +185,9 @@ export class ProductAssistant extends ServiceMap.Service<ProductAssistant, {
   ).pipe(
     // The toolkit handler layer must be provided so the framework can invoke
     // the tool handlers when the model makes tool calls.
-    Layer.provide(ProductToolkitLive)
+    Layer.provide(ProductToolkitLayer),
+    // Also provide the openai client required by OpenAiLanguageModel.model
+    Layer.provide(OpenAiClientLayer)
   )
 }
 
@@ -166,73 +210,17 @@ const AssistantToolkit = Toolkit.make(SearchProducts, GetInventory, webSearch)
 
 // Only user-defined tools that require handlers appear in `toLayer`. The
 // provider-defined `WebSearch` is executed server-side by the provider.
-const AssistantToolkitLive = AssistantToolkit.toLayer({
-  SearchProducts: ({ query, maxResults }) =>
-    Effect.succeed([
-      { id: "p-1", name: `${query} widget`, price: 19.99 }
-    ].slice(0, maxResults)),
-  GetInventory: ({ productId }) => Effect.succeed({ productId, available: 42 })
-})
-
-// Use the combined toolkit the same way. The model decides whether to call
-// your tools, the provider tool, or just respond with text.
-export const assistantProgram = Effect.gen(function*() {
-  const model = yield* LanguageModel.LanguageModel
-  const toolkit = yield* AssistantToolkit
-
-  const response = yield* model.generateText({
-    prompt: "What is the current price of wireless headphones? " +
-      "Also check the latest online reviews.",
-    toolkit
+export const AssistantToolkitLayer = AssistantToolkit.toLayer(Effect.gen(function*() {
+  yield* Effect.log("Initializing AssistantToolkitLive")
+  return AssistantToolkit.of({
+    SearchProducts: Effect.fn("AssistantToolkit.SearchProducts")(function*({ query, maxResults }) {
+      return [
+        new Product({ id: ProductId.makeUnsafe("p-1"), name: `${query} widget`, price: 19.99 }),
+        new Product({ id: ProductId.makeUnsafe("p-2"), name: `${query} gadget`, price: 29.99 })
+      ].slice(0, maxResults)
+    }),
+    GetInventory: Effect.fn("AssistantToolkit.GetInventory")(function*({ productId }) {
+      return { productId, available: 42 }
+    })
   })
-
-  // The response may contain results from both your tools and the provider
-  // tool. Provider-executed tool results have `providerExecuted: true`.
-  for (const result of response.toolResults) {
-    yield* Effect.log(
-      `${result.name}: providerExecuted=${result.providerExecuted}`
-    )
-  }
-
-  yield* Effect.log(response.text)
-}).pipe(Effect.provide(AssistantToolkitLive))
-
-// ---------------------------------------------------------------------------
-// 7. Streaming with tools
-// ---------------------------------------------------------------------------
-
-// `streamText` also supports toolkits. The stream emits tool-call and
-// tool-result parts interleaved with text deltas, so you can show progress as
-// the model works.
-export const streamWithTools = LanguageModel.streamText({
-  prompt: "Find me a product under $25",
-  toolkit: ProductToolkit
-}).pipe(
-  // Each stream part has a discriminated `type` field. Use `Stream.tap` or
-  // `Stream.mapEffect` to react to specific part types as they arrive.
-  Stream.mapEffect((part) => {
-    switch (part.type) {
-      case "text-delta":
-        return Effect.log(`text: ${part.delta}`)
-      case "tool-call":
-        return Effect.log(`tool call: ${part.name}`)
-      case "tool-result":
-        return Effect.log(`tool result: ${part.name}`)
-      default:
-        return Effect.void
-    }
-  }),
-  // Run the full stream to completion.
-  Stream.runDrain,
-  Effect.provide(ProductToolkitLive)
-)
-
-// ---------------------------------------------------------------------------
-// 8. Wiring everything together
-// ---------------------------------------------------------------------------
-
-// Compose the full application layer exactly like any other Effect service.
-export const ProductAssistantLive = ProductAssistant.layer.pipe(
-  Layer.provide(OpenAiLanguageModel.model("gpt-4.1")),
-  Layer.provide(OpenAiClientLive)
-)
+}))

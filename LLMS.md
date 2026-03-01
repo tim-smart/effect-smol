@@ -308,8 +308,7 @@ responses.
   generation, schema-validated object generation, and streaming responses.
 - **[Defining and using AI tools](./ai-docs/src/71_ai/20_tools.ts)**:
   Define tools with schemas, group them into toolkits, implement handlers,
-  pass them to `LanguageModel.generateText`, and inspect tool calls and
-  results. Also covers provider-defined tools like OpenAI web search.
+  and pass them to `LanguageModel.generateText`.
 
 ## Building distributed applications with cluster
 
