@@ -1,13 +1,19 @@
 /**
- * @title Decoding and encoding NDJSON
+ * @title Decoding and encoding streams
  *
- * How to decode and encode newline-delimited JSON (NDJSON) streams using
- * `Stream.pipeThroughChannel` with the `Ndjson` encoding channels. Covers
- * untyped decoding/encoding, schema-validated pipelines, and `NdjsonError`
- * handling.
+ * Use `Stream.pipeThroughChannel` with the `Ndjson` & `Msgpack` modules to
+ * decode and encode streams of structured data.
  */
-import { DateTime, Effect, Schema, Stream } from "effect"
-import { Ndjson } from "effect/unstable/encoding"
+import { DateTime, Schema, Stream } from "effect"
+import { Msgpack, Ndjson } from "effect/unstable/encoding"
+
+// All of the examples below can also be done with Msgpack by replacing `Ndjson`
+// with `Msgpack` and using the appropriate channels (`Msgpack.decode()`,
+// `Msgpack.encode()`, etc.).
+export const msgpackDecoder = Msgpack.decodeSchema(Schema.Struct({
+  id: Schema.Number,
+  name: Schema.String
+}))
 
 // ---------------------------------------------------------------------------
 // Domain
@@ -157,24 +163,3 @@ export const filterAndReencode = Stream.make(ndjsonInput).pipe(
   Stream.pipeThroughChannel(Ndjson.encodeSchemaString(LogEntry)()),
   Stream.runCollect
 )
-
-// ---------------------------------------------------------------------------
-// Running the examples
-// ---------------------------------------------------------------------------
-
-export const main = Effect.gen(function*() {
-  yield* Effect.log("--- decodeUntyped ---")
-  yield* Effect.log(yield* decodeUntyped)
-
-  yield* Effect.log("--- decodeTyped ---")
-  yield* Effect.log(yield* decodeTyped)
-
-  yield* Effect.log("--- encodeUntyped ---")
-  yield* Effect.log(yield* encodeUntyped)
-
-  yield* Effect.log("--- encodeTyped ---")
-  yield* Effect.log(yield* encodeTyped)
-
-  yield* Effect.log("--- filterAndReencode ---")
-  yield* Effect.log(yield* filterAndReencode)
-})
