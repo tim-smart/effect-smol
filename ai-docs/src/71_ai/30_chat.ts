@@ -56,7 +56,7 @@ export class AiAssistant extends ServiceMap.Service<AiAssistant, {
   chat(message: string): Effect.Effect<string, AiAssistantError>
   // Ask a question and use an agentic loop with tool calls to answer it.
   agent(question: string): Effect.Effect<string, AiAssistantError>
-}>()("docs/AiAssistant") {
+}>()("acme/AiAssistant") {
   static readonly layer = Layer.effect(
     AiAssistant,
     Effect.gen(function*() {
